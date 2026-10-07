@@ -1,7 +1,7 @@
-//! Play-In-Editor (PIE) Control Bar.
+//! Play-In-Editor (PIE) Control Bar for Bevylite.
 //!
-//! Spawns centered Play (▶), Pause (⏸), Stop (⏹), and Step (⏭) controls
-//! at the top of the viewport.
+//! Spawns centered Play (▶), Pause (⏸), Stop (⏹), and Pop-out Window (⧉) controls
+//! cleanly nested at the top toolbar center.
 
 use bevy::{
     ecs::message::MessageWriter,
@@ -13,6 +13,7 @@ use bevy::{
 };
 use crate::core::play_mode::PlayModeAction;
 use crate::scene::EditorInternal;
+use crate::ui::theme::*;
 
 pub fn spawn_play_bar(mut commands: Commands) {
     let bar_root = commands
@@ -21,32 +22,39 @@ pub fn spawn_play_bar(mut commands: Commands) {
             Name::new("PlayControlBar"),
             Node {
                 position_type: PositionType::Absolute,
-                top: px(4),
-                left: Val::Percent(42.0),
+                top: px(5),
+                left: Val::Percent(44.0),
                 height: px(28),
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                padding: UiRect::axes(px(6), px(2)),
+                padding: UiRect::axes(px(4), px(2)),
                 column_gap: px(4),
                 border: UiRect::all(px(1)),
-                border_radius: BorderRadius::all(px(4)),
+                border_radius: BorderRadius::all(px(5)),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.14, 0.14, 0.18)),
-            BorderColor::all(Color::srgb(0.28, 0.28, 0.35)),
+            BackgroundColor(BG_CARD),
+            BorderColor::all(BORDER_CARD),
         ))
         .id();
 
-    // Play Button (In-Viewport)
-    spawn_play_button(&mut commands, bar_root, "▶ Play", PlayModeAction::Play, true);
-    // Pop-out Window Button (Dedicated Window)
-    spawn_play_button(&mut commands, bar_root, "⧉ Window", PlayModeAction::PlayInWindow, false);
+    // Play Button (In-Viewport) - Emerald Accent
+    spawn_play_button(&mut commands, bar_root, "▶ Play", PlayModeAction::Play, PlayBtnType::Play);
     // Pause Button
-    spawn_play_button(&mut commands, bar_root, "⏸ Pause", PlayModeAction::Pause, false);
+    spawn_play_button(&mut commands, bar_root, "⏸", PlayModeAction::Pause, PlayBtnType::Normal);
     // Stop Button
-    spawn_play_button(&mut commands, bar_root, "⏹ Stop", PlayModeAction::Stop, false);
+    spawn_play_button(&mut commands, bar_root, "⏹", PlayModeAction::Stop, PlayBtnType::Stop);
     // Step Button
-    spawn_play_button(&mut commands, bar_root, "⏭", PlayModeAction::Step, false);
+    spawn_play_button(&mut commands, bar_root, "⏭", PlayModeAction::Step, PlayBtnType::Normal);
+    // Pop-out Window Button
+    spawn_play_button(&mut commands, bar_root, "⧉ Window", PlayModeAction::PlayInWindow, PlayBtnType::Normal);
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PlayBtnType {
+    Play,
+    Stop,
+    Normal,
 }
 
 fn spawn_play_button(
@@ -54,18 +62,12 @@ fn spawn_play_button(
     parent: Entity,
     label: &str,
     action: PlayModeAction,
-    is_play: bool,
+    btn_type: PlayBtnType,
 ) {
-    let normal_bg = if is_play {
-        Color::srgb(0.15, 0.35, 0.2)
-    } else {
-        Color::srgb(0.2, 0.2, 0.25)
-    };
-
-    let hover_bg = if is_play {
-        Color::srgb(0.22, 0.48, 0.28)
-    } else {
-        Color::srgb(0.28, 0.28, 0.36)
+    let (normal_bg, hover_bg, border_col) = match btn_type {
+        PlayBtnType::Play => (ACCENT_EMERALD, ACCENT_EMERALD_HOVER, BORDER_SUBTLE),
+        PlayBtnType::Stop => (BG_INPUT, ACCENT_CRIMSON, BORDER_SUBTLE),
+        PlayBtnType::Normal => (BG_INPUT, BG_HOVER, BORDER_SUBTLE),
     };
 
     let btn = commands
@@ -73,15 +75,15 @@ fn spawn_play_button(
             EditorInternal,
             action,
             Node {
-                padding: UiRect::axes(px(8), px(3)),
+                padding: UiRect::axes(px(10), px(3)),
                 border: UiRect::all(px(1)),
-                border_radius: BorderRadius::all(px(3)),
+                border_radius: BorderRadius::all(px(4)),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
             },
             BackgroundColor(normal_bg),
-            BorderColor::all(Color::srgb(0.3, 0.3, 0.38)),
+            BorderColor::all(border_col),
             ChildOf(parent),
         ))
         .observe(move |trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
@@ -109,7 +111,7 @@ fn spawn_play_button(
             font_size: bevy::text::FontSize::Px(11.0),
             ..default()
         },
-        TextColor(Color::srgb(0.9, 0.95, 0.9)),
+        TextColor(if btn_type == PlayBtnType::Play { Color::WHITE } else { TEXT_PRIMARY }),
         ChildOf(btn),
     ));
 }

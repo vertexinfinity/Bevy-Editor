@@ -3,6 +3,7 @@
 use bevy::{inspector::InspectorSelection, prelude::*};
 use crate::export::ExportStatus;
 use crate::scene::EditorInternal;
+use crate::ui::theme::*;
 
 #[derive(Component)]
 pub struct StatusText;
@@ -28,22 +29,50 @@ pub fn spawn_status_bar(mut commands: Commands) {
                 justify_content: JustifyContent::SpaceBetween,
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.1, 0.1, 0.12)),
-            BorderColor::all(Color::srgb(0.2, 0.2, 0.22)),
+            BackgroundColor(BG_SHELL),
+            BorderColor::all(BORDER_SUBTLE),
         ))
         .id();
+
+    // Left container: Status dot + helper text
+    let left_container = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: px(8),
+                ..default()
+            },
+            ChildOf(bar_root),
+        ))
+        .id();
+
+    // Cyan Status Indicator Dot
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Node {
+            width: px(7),
+            height: px(7),
+            border_radius: BorderRadius::all(px(4)),
+            ..default()
+        },
+        BackgroundColor(ACCENT_CYAN),
+        ChildOf(left_container),
+    ));
 
     // Left status text
     commands.spawn((
         EditorInternal,
         StatusText,
-        Text::new("Ready | Fly Cam: WASD + Hold Right Mouse | Q/E: Up/Down"),
+        Text::new("Editor Ready | Fly Cam: WASD + Hold RMB | Speed: Scroll Wheel"),
         TextFont {
             font_size: bevy::text::FontSize::Px(11.0),
             ..default()
         },
-        TextColor(Color::srgb(0.65, 0.65, 0.7)),
-        ChildOf(bar_root),
+        TextColor(TEXT_SECONDARY),
+        ChildOf(left_container),
     ));
 
     // Right container: Active context badge + Engine info
@@ -54,7 +83,7 @@ pub fn spawn_status_bar(mut commands: Commands) {
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
                 column_gap: px(12),
-                padding: UiRect::right(px(12)),
+                padding: UiRect::right(px(8)),
                 ..default()
             },
             ChildOf(bar_root),
@@ -72,8 +101,8 @@ pub fn spawn_status_bar(mut commands: Commands) {
                 align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.16, 0.18, 0.22)),
-            BorderColor::all(Color::srgb(0.25, 0.3, 0.38)),
+            BackgroundColor(BG_CARD),
+            BorderColor::all(BORDER_SUBTLE),
             ChildOf(right_container),
         ))
         .id();
@@ -86,19 +115,19 @@ pub fn spawn_status_bar(mut commands: Commands) {
             font_size: bevy::text::FontSize::Px(10.5),
             ..default()
         },
-        TextColor(Color::srgb(0.5, 0.75, 1.0)),
+        TextColor(ACCENT_CYAN),
         ChildOf(chip),
     ));
 
     // Right engine info text
     commands.spawn((
         EditorInternal,
-        Text::new("Bevy 0.20-dev"),
+        Text::new("Bevy 0.20-dev | Rust 2024"),
         TextFont {
             font_size: bevy::text::FontSize::Px(11.0),
             ..default()
         },
-        TextColor(Color::srgb(0.45, 0.45, 0.5)),
+        TextColor(TEXT_MUTED),
         ChildOf(right_container),
     ));
 }
@@ -114,7 +143,7 @@ pub fn update_status_bar(
         if let Ok(mut text) = text_query.single_mut() {
             match export_status.as_ref() {
                 ExportStatus::Idle => {
-                    text.0 = "Ready | Fly Cam: WASD + Hold Right Mouse | Q/E: Up/Down".to_string();
+                    text.0 = "Editor Ready | Fly Cam: WASD + Hold RMB | Speed: Scroll Wheel".to_string();
                 }
                 ExportStatus::InProgress { target, progress } => {
                     text.0 = format!("Exporting {target}: {progress}");
@@ -138,7 +167,7 @@ pub fn update_status_bar(
                     .flatten()
                     .map(|n| n.as_str())
                     .unwrap_or("Object");
-                chip.0 = format!("Active: {name} ({:?})", entity);
+                chip.0 = format!("Active: {name} (#{entity})");
             } else {
                 chip.0 = "No Selection".to_string();
             }

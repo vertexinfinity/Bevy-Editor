@@ -14,6 +14,7 @@ use bevy::{
 };
 use crate::export::ExportStatus;
 use crate::scene::EditorInternal;
+use crate::ui::theme::*;
 
 /// Marker component for an asset row in the Project Explorer.
 #[derive(Component, Clone)]
@@ -89,11 +90,11 @@ pub fn spawn_asset_browser(mut commands: Commands) {
             Name::new("ProjectExplorerDock"),
             Node {
                 position_type: PositionType::Absolute,
-                left: px(12),
-                bottom: px(36), // above bottom status bar
-                width: px(360),
+                left: px(255), // offset cleanly from hierarchy dock
+                bottom: px(34), // above bottom status bar
+                width: px(380),
                 max_width: percent(45.0),
-                height: px(270),
+                height: px(250),
                 max_height: percent(50.0),
                 border: UiRect::all(px(1)),
                 border_radius: BorderRadius::all(px(6)),
@@ -101,8 +102,8 @@ pub fn spawn_asset_browser(mut commands: Commands) {
                 overflow: Overflow::clip(),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.12, 0.12, 0.15)),
-            BorderColor::all(Color::srgb(0.24, 0.24, 0.28)),
+            BackgroundColor(BG_PANEL),
+            BorderColor::all(BORDER_SUBTLE),
         ))
         .id();
 
@@ -111,7 +112,7 @@ pub fn spawn_asset_browser(mut commands: Commands) {
         .spawn((
             EditorInternal,
             Node {
-                height: px(30),
+                height: px(32),
                 padding: UiRect::axes(px(8), px(4)),
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
@@ -119,8 +120,8 @@ pub fn spawn_asset_browser(mut commands: Commands) {
                 border: UiRect::bottom(px(1)),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.16, 0.16, 0.20)),
-            BorderColor::all(Color::srgb(0.24, 0.24, 0.28)),
+            BackgroundColor(BG_CARD),
+            BorderColor::all(BORDER_SUBTLE),
             ChildOf(browser_root),
         ))
         .id();
@@ -148,7 +149,7 @@ pub fn spawn_asset_browser(mut commands: Commands) {
             font_size: bevy::text::FontSize::Px(12.0),
             ..default()
         },
-        TextColor(Color::srgb(0.9, 0.9, 0.95)),
+        TextColor(TEXT_PRIMARY),
         ChildOf(header_left),
     ));
 
@@ -176,18 +177,18 @@ pub fn spawn_asset_browser(mut commands: Commands) {
                 border_radius: BorderRadius::all(px(3)),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.2, 0.2, 0.25)),
-            BorderColor::all(Color::srgb(0.3, 0.3, 0.38)),
+            BackgroundColor(BG_INPUT),
+            BorderColor::all(BORDER_SUBTLE),
             ChildOf(header_right),
         ))
         .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
             if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(Color::srgb(0.28, 0.34, 0.46));
+                *bg = BackgroundColor(BG_HOVER);
             }
         })
         .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
             if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(Color::srgb(0.2, 0.2, 0.25));
+                *bg = BackgroundColor(BG_INPUT);
             }
         })
         .observe(|click: On<PointerClick>, state: Res<AssetBrowserState>, mut writer: MessageWriter<NavigateAssetFolderMessage>| {
@@ -209,7 +210,7 @@ pub fn spawn_asset_browser(mut commands: Commands) {
             font_size: bevy::text::FontSize::Px(10.5),
             ..default()
         },
-        TextColor(Color::srgb(0.85, 0.85, 0.9)),
+        TextColor(TEXT_SECONDARY),
         ChildOf(up_btn),
     ));
 
@@ -223,18 +224,18 @@ pub fn spawn_asset_browser(mut commands: Commands) {
                 border_radius: BorderRadius::all(px(3)),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.2, 0.2, 0.25)),
-            BorderColor::all(Color::srgb(0.3, 0.3, 0.38)),
+            BackgroundColor(BG_INPUT),
+            BorderColor::all(BORDER_SUBTLE),
             ChildOf(header_right),
         ))
         .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
             if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(Color::srgb(0.28, 0.34, 0.46));
+                *bg = BackgroundColor(BG_HOVER);
             }
         })
         .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
             if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(Color::srgb(0.2, 0.2, 0.25));
+                *bg = BackgroundColor(BG_INPUT);
             }
         })
         .observe(|click: On<PointerClick>, mut writer: MessageWriter<RefreshAssetBrowserMessage>| {
@@ -252,7 +253,7 @@ pub fn spawn_asset_browser(mut commands: Commands) {
             font_size: bevy::text::FontSize::Px(11.0),
             ..default()
         },
-        TextColor(Color::srgb(0.85, 0.85, 0.9)),
+        TextColor(TEXT_SECONDARY),
         ChildOf(refresh_btn),
     ));
 
@@ -266,18 +267,18 @@ pub fn spawn_asset_browser(mut commands: Commands) {
                 border_radius: BorderRadius::all(px(3)),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.2, 0.2, 0.25)),
-            BorderColor::all(Color::srgb(0.3, 0.3, 0.38)),
+            BackgroundColor(BG_INPUT),
+            BorderColor::all(BORDER_SUBTLE),
             ChildOf(header_right),
         ))
         .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
             if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(Color::srgb(0.28, 0.34, 0.46));
+                *bg = BackgroundColor(BG_HOVER);
             }
         })
         .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
             if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(Color::srgb(0.2, 0.2, 0.25));
+                *bg = BackgroundColor(BG_INPUT);
             }
         })
         .observe(|click: On<PointerClick>, mut writer: MessageWriter<ToggleExplorerDockMessage>| {
@@ -296,7 +297,7 @@ pub fn spawn_asset_browser(mut commands: Commands) {
             font_size: bevy::text::FontSize::Px(10.0),
             ..default()
         },
-        TextColor(Color::srgb(0.85, 0.85, 0.9)),
+        TextColor(TEXT_SECONDARY),
         ChildOf(collapse_btn),
     ));
 
@@ -349,7 +350,7 @@ fn populate_asset_list(commands: &mut Commands, parent: Entity, current_dir: &Pa
                 font_size: bevy::text::FontSize::Px(11.0),
                 ..default()
             },
-            TextColor(Color::srgb(0.55, 0.55, 0.6)),
+            TextColor(TEXT_MUTED),
             ChildOf(parent),
         ));
         return;
@@ -383,21 +384,23 @@ fn populate_asset_list(commands: &mut Commands, parent: Entity, current_dir: &Pa
                 Node {
                     padding: UiRect::axes(px(6), px(3)),
                     border_radius: BorderRadius::all(px(3)),
+                    border: UiRect::all(px(1)),
                     align_items: AlignItems::Center,
                     ..default()
                 },
-                BackgroundColor(Color::srgb(0.18, 0.18, 0.22)),
+                BackgroundColor(BG_CARD),
+                BorderColor::all(BORDER_SUBTLE),
                 ChildOf(parent),
             ))
             .observe(move |trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>, mut hovered_dir: ResMut<HoveredAssetDirectory>| {
                 if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                    *bg = BackgroundColor(Color::srgb(0.26, 0.32, 0.44));
+                    *bg = BackgroundColor(BG_HOVER);
                 }
                 hovered_dir.0 = hover_dir_path.clone();
             })
             .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
                 if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                    *bg = BackgroundColor(Color::srgb(0.18, 0.18, 0.22));
+                    *bg = BackgroundColor(BG_CARD);
                 }
             })
             .observe(move |click: On<PointerClick>, query: Query<&AssetItem>, mut spawn_writer: MessageWriter<SpawnAssetMessage>, mut nav_writer: MessageWriter<NavigateAssetFolderMessage>| {
@@ -423,7 +426,7 @@ fn populate_asset_list(commands: &mut Commands, parent: Entity, current_dir: &Pa
                 font_size: bevy::text::FontSize::Px(11.0),
                 ..default()
             },
-            TextColor(Color::srgb(0.8, 0.8, 0.85)),
+            TextColor(TEXT_PRIMARY),
             ChildOf(row),
         ));
     }

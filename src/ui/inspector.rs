@@ -27,6 +27,7 @@ use bevy::{
     ui_widgets::split_pane_self_update,
 };
 use crate::scene::{components::*, EditorInternal};
+use crate::ui::theme::*;
 
 /// State managing the inspector's display mode, coordinate frame, and docking.
 #[derive(Resource, Debug, Clone)]
@@ -136,8 +137,8 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
                 overflow: Overflow::clip(),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.12, 0.12, 0.15)),
-            BorderColor::all(Color::srgb(0.24, 0.24, 0.28)),
+            BackgroundColor(BG_PANEL),
+            BorderColor::all(BORDER_SUBTLE),
         ))
         .id();
 
@@ -154,8 +155,8 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
                 padding: UiRect::axes(px(8), px(4)),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.15, 0.15, 0.18)),
-            BorderColor::all(Color::srgb(0.24, 0.24, 0.28)),
+            BackgroundColor(BG_CARD),
+            BorderColor::all(BORDER_SUBTLE),
             ChildOf(dock_root),
         ))
         .id();
@@ -169,7 +170,7 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
             font_size: bevy::text::FontSize::Px(12.0),
             ..default()
         },
-        TextColor(Color::srgb(0.9, 0.9, 0.95)),
+        TextColor(TEXT_PRIMARY),
         ChildOf(header),
     ));
 
@@ -197,18 +198,18 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
                 border_radius: BorderRadius::all(px(3)),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.2, 0.2, 0.25)),
-            BorderColor::all(Color::srgb(0.3, 0.3, 0.38)),
+            BackgroundColor(BG_INPUT),
+            BorderColor::all(BORDER_SUBTLE),
             ChildOf(header_btns),
         ))
         .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
             if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(Color::srgb(0.28, 0.34, 0.46));
+                *bg = BackgroundColor(BG_HOVER);
             }
         })
         .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
             if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(Color::srgb(0.2, 0.2, 0.25));
+                *bg = BackgroundColor(BG_INPUT);
             }
         })
         .observe(|click: On<PointerClick>, mut writer: MessageWriter<ToggleDebugModeMessage>| {
@@ -227,7 +228,7 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
             font_size: bevy::text::FontSize::Px(11.0),
             ..default()
         },
-        TextColor(Color::srgb(0.85, 0.85, 0.9)),
+        TextColor(TEXT_SECONDARY),
         ChildOf(mode_btn),
     ));
 
@@ -241,18 +242,18 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
                 border_radius: BorderRadius::all(px(3)),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.2, 0.2, 0.25)),
-            BorderColor::all(Color::srgb(0.3, 0.3, 0.38)),
+            BackgroundColor(BG_INPUT),
+            BorderColor::all(BORDER_SUBTLE),
             ChildOf(header_btns),
         ))
         .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
             if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(Color::srgb(0.28, 0.34, 0.46));
+                *bg = BackgroundColor(BG_HOVER);
             }
         })
         .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
             if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(Color::srgb(0.2, 0.2, 0.25));
+                *bg = BackgroundColor(BG_INPUT);
             }
         })
         .observe(|click: On<PointerClick>, mut writer: MessageWriter<ToggleDockMessage>| {
@@ -271,7 +272,7 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
             font_size: bevy::text::FontSize::Px(11.0),
             ..default()
         },
-        TextColor(Color::srgb(0.85, 0.85, 0.9)),
+        TextColor(TEXT_SECONDARY),
         ChildOf(dock_btn),
     ));
 
@@ -356,8 +357,8 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
                 border_radius: BorderRadius::all(px(4)),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.16, 0.16, 0.2)),
-            BorderColor::all(Color::srgb(0.26, 0.26, 0.32)),
+            BackgroundColor(BG_CARD),
+            BorderColor::all(BORDER_SUBTLE),
             ChildOf(parent),
         ))
         .id();
@@ -371,7 +372,7 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
             font_size: bevy::text::FontSize::Px(12.0),
             ..default()
         },
-        TextColor(Color::srgb(0.9, 0.85, 0.4)),
+        TextColor(ACCENT_CYAN),
         ChildOf(ent_header),
     ));
 
@@ -385,18 +386,18 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
                 border_radius: BorderRadius::all(px(3)),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.22, 0.22, 0.28)),
-            BorderColor::all(Color::srgb(0.35, 0.35, 0.45)),
+            BackgroundColor(BG_INPUT),
+            BorderColor::all(BORDER_SUBTLE),
             ChildOf(ent_header),
         ))
         .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
             if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(Color::srgb(0.32, 0.38, 0.52));
+                *bg = BackgroundColor(BG_HOVER);
             }
         })
         .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
             if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(Color::srgb(0.22, 0.22, 0.28));
+                *bg = BackgroundColor(BG_INPUT);
             }
         })
         .observe(|click: On<PointerClick>, mut writer: MessageWriter<ToggleCoordModeMessage>| {
@@ -415,7 +416,7 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
             font_size: bevy::text::FontSize::Px(11.0),
             ..default()
         },
-        TextColor(Color::srgb(0.7, 0.85, 1.0)),
+        TextColor(TEXT_SECONDARY),
         ChildOf(coord_btn),
     ));
 
@@ -431,8 +432,8 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
                 border_radius: BorderRadius::all(px(4)),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.14, 0.14, 0.17)),
-            BorderColor::all(Color::srgb(0.25, 0.25, 0.3)),
+            BackgroundColor(BG_CARD),
+            BorderColor::all(BORDER_SUBTLE),
             ChildOf(parent),
         ))
         .id();
@@ -445,7 +446,7 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
             font_size: bevy::text::FontSize::Px(12.0),
             ..default()
         },
-        TextColor(Color::srgb(0.85, 0.85, 0.9)),
+        TextColor(TEXT_PRIMARY),
         ChildOf(transform_card),
     ));
 
@@ -459,7 +460,7 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
             font_size: bevy::text::FontSize::Px(11.0),
             ..default()
         },
-        TextColor(Color::srgb(0.75, 0.75, 0.8)),
+        TextColor(TEXT_SECONDARY),
         ChildOf(transform_card),
     ));
 
@@ -492,7 +493,7 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
             font_size: bevy::text::FontSize::Px(11.0),
             ..default()
         },
-        TextColor(Color::srgb(0.75, 0.75, 0.8)),
+        TextColor(TEXT_SECONDARY),
         ChildOf(transform_card),
     ));
 
@@ -523,7 +524,7 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
             font_size: bevy::text::FontSize::Px(11.0),
             ..default()
         },
-        TextColor(Color::srgb(0.75, 0.75, 0.8)),
+        TextColor(TEXT_SECONDARY),
         ChildOf(transform_card),
     ));
 
@@ -555,8 +556,8 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
                 border_radius: BorderRadius::all(px(4)),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.14, 0.14, 0.17)),
-            BorderColor::all(Color::srgb(0.25, 0.25, 0.3)),
+            BackgroundColor(BG_CARD),
+            BorderColor::all(BORDER_SUBTLE),
             ChildOf(parent),
         ))
         .id();
@@ -569,7 +570,7 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
             font_size: bevy::text::FontSize::Px(12.0),
             ..default()
         },
-        TextColor(Color::srgb(0.85, 0.85, 0.9)),
+        TextColor(TEXT_PRIMARY),
         ChildOf(comp_card),
     ));
 
@@ -582,7 +583,7 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
             font_size: bevy::text::FontSize::Px(11.0),
             ..default()
         },
-        TextColor(Color::srgb(0.65, 0.8, 0.9)),
+        TextColor(ACCENT_CYAN),
         ChildOf(comp_card),
     ));
 
@@ -598,8 +599,8 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
                 border_radius: BorderRadius::all(px(4)),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.14, 0.14, 0.17)),
-            BorderColor::all(Color::srgb(0.25, 0.25, 0.3)),
+            BackgroundColor(BG_CARD),
+            BorderColor::all(BORDER_SUBTLE),
             ChildOf(parent),
         ))
         .id();
@@ -612,7 +613,7 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
             font_size: bevy::text::FontSize::Px(12.0),
             ..default()
         },
-        TextColor(Color::srgb(0.85, 0.85, 0.9)),
+        TextColor(TEXT_PRIMARY),
         ChildOf(add_comp_card),
     ));
 
@@ -647,18 +648,18 @@ fn spawn_nudge_btn(commands: &mut Commands, parent: Entity, label: &str, action:
                 border_radius: BorderRadius::all(px(3)),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.2, 0.2, 0.24)),
-            BorderColor::all(Color::srgb(0.3, 0.3, 0.36)),
+            BackgroundColor(BG_INPUT),
+            BorderColor::all(BORDER_SUBTLE),
             ChildOf(parent),
         ))
         .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
             if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(Color::srgb(0.3, 0.36, 0.48));
+                *bg = BackgroundColor(BG_HOVER);
             }
         })
         .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
             if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(Color::srgb(0.2, 0.2, 0.24));
+                *bg = BackgroundColor(BG_INPUT);
             }
         })
         .observe(move |click: On<PointerClick>, mut writer: MessageWriter<TransformNudgeAction>| {
@@ -676,7 +677,7 @@ fn spawn_nudge_btn(commands: &mut Commands, parent: Entity, label: &str, action:
             font_size: bevy::text::FontSize::Px(10.0),
             ..default()
         },
-        TextColor(Color::srgb(0.85, 0.85, 0.9)),
+        TextColor(TEXT_SECONDARY),
         ChildOf(btn),
     ));
 }
@@ -691,18 +692,18 @@ fn spawn_add_comp_btn(commands: &mut Commands, parent: Entity, label: &str, kind
                 border_radius: BorderRadius::all(px(3)),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.18, 0.24, 0.32)),
-            BorderColor::all(Color::srgb(0.28, 0.38, 0.5)),
+            BackgroundColor(BG_INPUT),
+            BorderColor::all(BORDER_SUBTLE),
             ChildOf(parent),
         ))
         .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
             if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(Color::srgb(0.25, 0.35, 0.55));
+                *bg = BackgroundColor(BG_HOVER);
             }
         })
         .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
             if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(Color::srgb(0.18, 0.24, 0.32));
+                *bg = BackgroundColor(BG_INPUT);
             }
         })
         .observe(move |click: On<PointerClick>, mut writer: MessageWriter<AddComponentKind>| {
@@ -720,7 +721,7 @@ fn spawn_add_comp_btn(commands: &mut Commands, parent: Entity, label: &str, kind
             font_size: bevy::text::FontSize::Px(11.0),
             ..default()
         },
-        TextColor(Color::srgb(0.9, 0.95, 1.0)),
+        TextColor(TEXT_PRIMARY),
         ChildOf(btn),
     ));
 }

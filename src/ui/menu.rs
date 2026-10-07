@@ -1,3 +1,8 @@
+//! Top Menu Bar & Application Header for Bevylite.
+//!
+//! Provides brand identity, project management, scene operations,
+//! layout presets, and multi-platform export triggers.
+
 use bevy::{
     ecs::{
         message::{Message, MessageWriter},
@@ -11,6 +16,7 @@ use bevy::{
 };
 use crate::export::RequestExportMessage;
 use crate::scene::{primitives, save_load, CurrentScene, EditorInternal};
+use crate::ui::theme::*;
 
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MenuAction {
@@ -28,7 +34,7 @@ pub enum MenuAction {
 #[derive(Message, Clone, Copy, Debug)]
 pub struct MenuActionMessage(pub MenuAction);
 
-/// Spawns the top menu bar.
+/// Spawns the top unified header and menu bar.
 pub fn spawn_menu_bar(mut commands: Commands) {
     let bar_root = commands
         .spawn((
@@ -39,42 +45,82 @@ pub fn spawn_menu_bar(mut commands: Commands) {
                 top: px(0),
                 left: px(0),
                 right: px(0),
-                height: px(36),
+                height: px(38),
                 border: UiRect::bottom(px(1)),
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                padding: UiRect::axes(px(8), px(4)),
-                column_gap: px(6),
+                justify_content: JustifyContent::SpaceBetween,
+                padding: UiRect::axes(px(12), px(4)),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.12, 0.12, 0.14)),
-            BorderColor::all(Color::srgb(0.25, 0.25, 0.28)),
+            BackgroundColor(BG_SHELL),
+            BorderColor::all(BORDER_SUBTLE),
         ))
         .id();
 
-    // Spawn Title / Brand
+    // Left Container: Brand + Scene Actions
+    let left_group = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: px(6),
+                ..default()
+            },
+            ChildOf(bar_root),
+        ))
+        .id();
+
+    // Bevylite Brand Logo Badge
+    let brand_pill = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: px(6),
+                padding: UiRect::axes(px(8), px(3)),
+                margin: UiRect::right(px(10)),
+                border_radius: BorderRadius::all(px(4)),
+                ..default()
+            },
+            BackgroundColor(BG_CARD),
+            BorderColor::all(BORDER_SUBTLE),
+            ChildOf(left_group),
+        ))
+        .id();
+
     commands.spawn((
         EditorInternal,
         Pickable::IGNORE,
-        Text::new("Bevy Editor"),
+        Text::new("◈"),
         TextFont {
-            font_size: bevy::text::FontSize::Px(13.0),
+            font_size: bevy::text::FontSize::Px(12.0),
             ..default()
         },
-        TextColor(Color::srgb(0.9, 0.9, 0.9)),
-        Node {
-            margin: UiRect::right(px(16)),
-            ..default()
-        },
-        ChildOf(bar_root),
+        TextColor(ACCENT_CYAN),
+        ChildOf(brand_pill),
     ));
 
-    // Spawn Menu Action Buttons
-    spawn_menu_button(&mut commands, bar_root, "New Project...", MenuAction::NewProject);
-    spawn_menu_button(&mut commands, bar_root, "New Scene", MenuAction::NewScene);
-    spawn_menu_button(&mut commands, bar_root, "Open...", MenuAction::OpenScene);
-    spawn_menu_button(&mut commands, bar_root, "Save", MenuAction::SaveScene);
-    spawn_menu_button(&mut commands, bar_root, "Save As...", MenuAction::SaveAsScene);
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new("BEVYLITE"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(12.0),
+            ..default()
+        },
+        TextColor(TEXT_PRIMARY),
+        ChildOf(brand_pill),
+    ));
+
+    // Menu Action Buttons
+    spawn_menu_button(&mut commands, left_group, "+ Project", MenuAction::NewProject);
+    spawn_menu_button(&mut commands, left_group, "New Scene", MenuAction::NewScene);
+    spawn_menu_button(&mut commands, left_group, "Open...", MenuAction::OpenScene);
+    spawn_menu_button(&mut commands, left_group, "Save", MenuAction::SaveScene);
+    spawn_menu_button(&mut commands, left_group, "Save As...", MenuAction::SaveAsScene);
 
     // Separator
     commands.spawn((
@@ -83,18 +129,63 @@ pub fn spawn_menu_bar(mut commands: Commands) {
         Node {
             width: px(1),
             height: px(18),
-            margin: UiRect::axes(px(6), px(0)),
+            margin: UiRect::axes(px(4), px(0)),
             ..default()
         },
-        BackgroundColor(Color::srgb(0.3, 0.3, 0.35)),
-        ChildOf(bar_root),
+        BackgroundColor(BORDER_CARD),
+        ChildOf(left_group),
     ));
 
-    // Export Buttons
-    spawn_menu_button(&mut commands, bar_root, "Export Android", MenuAction::ExportAndroid);
-    spawn_menu_button(&mut commands, bar_root, "Export Windows", MenuAction::ExportWindows);
-    spawn_menu_button(&mut commands, bar_root, "Export Web", MenuAction::ExportWeb);
-    spawn_menu_button(&mut commands, bar_root, "Export iOS", MenuAction::ExportIos);
+    // Multi-Platform Export Action Pills
+    spawn_menu_button(&mut commands, left_group, "Android", MenuAction::ExportAndroid);
+    spawn_menu_button(&mut commands, left_group, "Windows", MenuAction::ExportWindows);
+    spawn_menu_button(&mut commands, left_group, "Web", MenuAction::ExportWeb);
+    spawn_menu_button(&mut commands, left_group, "iOS", MenuAction::ExportIos);
+
+    // Right Container: Workspace layout switcher + Scene chip
+    let right_group = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: px(8),
+                ..default()
+            },
+            ChildOf(bar_root),
+        ))
+        .id();
+
+    // Workspace layout selector pill
+    let layout_chip = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                padding: UiRect::axes(px(8), px(3)),
+                border: UiRect::all(px(1)),
+                border_radius: BorderRadius::all(px(4)),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: px(4),
+                ..default()
+            },
+            BackgroundColor(BG_CARD),
+            BorderColor::all(BORDER_SUBTLE),
+            ChildOf(right_group),
+        ))
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new("Layout: Default ▾"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(11.0),
+            ..default()
+        },
+        TextColor(TEXT_SECONDARY),
+        ChildOf(layout_chip),
+    ));
 }
 
 fn spawn_menu_button(
@@ -108,25 +199,25 @@ fn spawn_menu_button(
             EditorInternal,
             action,
             Node {
-                padding: UiRect::axes(px(10), px(4)),
+                padding: UiRect::axes(px(9), px(3)),
                 border: UiRect::all(px(1)),
                 border_radius: BorderRadius::all(px(4)),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.18, 0.18, 0.22)),
-            BorderColor::all(Color::srgb(0.28, 0.28, 0.32)),
+            BackgroundColor(BG_INPUT),
+            BorderColor::all(BORDER_SUBTLE),
             ChildOf(parent),
         ))
         .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
             if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(Color::srgb(0.28, 0.34, 0.46));
+                *bg = BackgroundColor(BG_HOVER);
             }
         })
         .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
             if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(Color::srgb(0.18, 0.18, 0.22));
+                *bg = BackgroundColor(BG_INPUT);
             }
         })
         .observe(
@@ -147,10 +238,10 @@ fn spawn_menu_button(
         Pickable::IGNORE,
         Text::new(label),
         TextFont {
-            font_size: bevy::text::FontSize::Px(12.0),
+            font_size: bevy::text::FontSize::Px(11.5),
             ..default()
         },
-        TextColor(Color::srgb(0.85, 0.85, 0.9)),
+        TextColor(TEXT_PRIMARY),
         ChildOf(btn),
     ));
 }
@@ -197,7 +288,6 @@ pub fn handle_menu_actions(world: &mut World) {
                     .pick_file()
                 {
                     info!("Selected scene to open: {:?}", file);
-                    // Clear existing user scene entities
                     world.despawn_all::<With<crate::scene::SceneEntity>>();
 
                     let path_str = file.to_string_lossy().to_string();
