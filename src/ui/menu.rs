@@ -14,6 +14,7 @@ use crate::scene::{primitives, save_load, CurrentScene, EditorInternal};
 
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MenuAction {
+    NewProject,
     NewScene,
     OpenScene,
     SaveScene,
@@ -69,7 +70,8 @@ pub fn spawn_menu_bar(mut commands: Commands) {
     ));
 
     // Spawn Menu Action Buttons
-    spawn_menu_button(&mut commands, bar_root, "New", MenuAction::NewScene);
+    spawn_menu_button(&mut commands, bar_root, "New Project...", MenuAction::NewProject);
+    spawn_menu_button(&mut commands, bar_root, "New Scene", MenuAction::NewScene);
     spawn_menu_button(&mut commands, bar_root, "Open...", MenuAction::OpenScene);
     spawn_menu_button(&mut commands, bar_root, "Save", MenuAction::SaveScene);
     spawn_menu_button(&mut commands, bar_root, "Save As...", MenuAction::SaveAsScene);
@@ -164,6 +166,18 @@ pub fn handle_menu_actions(world: &mut World) {
 
     for action in actions {
         match action {
+            MenuAction::NewProject => {
+                if let Some(folder) = rfd::FileDialog::new().pick_folder() {
+                    let _ = crate::project::ProjectScaffolder::create_project(&folder, "MyBevyGame");
+                    if let Some(mut status) = world.get_resource_mut::<crate::export::ExportStatus>() {
+                        *status = crate::export::ExportStatus::Success {
+                            target: "Project Scaffolder".to_string(),
+                            message: "Created clean, zero-error standalone Bevy project".to_string(),
+                            path: folder,
+                        };
+                    }
+                }
+            }
             MenuAction::NewScene => {
                 info!("Creating new scene: resetting user entities...");
                 let entities_to_despawn: Vec<Entity> = world

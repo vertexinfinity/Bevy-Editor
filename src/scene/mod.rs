@@ -4,6 +4,7 @@ pub mod components;
 pub mod drag_drop;
 pub mod primitives;
 pub mod save_load;
+pub mod serialization;
 
 use std::path::PathBuf;
 use bevy::prelude::*;
@@ -25,6 +26,7 @@ impl Plugin for SceneManagerPlugin {
             .register_type::<EditorInternal>()
             .add_plugins((
                 components::AuthorableComponentsPlugin,
+                serialization::SceneSerializationPlugin,
                 drag_drop::DragDropPlugin,
             ))
             .add_systems(Startup, primitives::spawn_starter_scene);

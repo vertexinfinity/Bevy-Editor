@@ -1,7 +1,9 @@
 //! Bevy-Editor: Minimal, extensible, modular 3D Scene Viewer & Multi-Platform Exporter.
 
 mod camera;
+mod core;
 mod export;
+mod project;
 mod scene;
 mod ui;
 
@@ -19,6 +21,7 @@ fn main() {
         }))
         .add_plugins((
             FeathersPlugins,
+            core::CoreEditorPlugin,
             camera::EditorCameraPlugin,
             scene::SceneManagerPlugin,
             ui::EditorUiPlugin,

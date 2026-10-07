@@ -3,7 +3,9 @@
 pub mod asset_browser;
 pub mod inspector;
 pub mod menu;
+pub mod play_bar;
 pub mod status_bar;
+pub mod tools_bar;
 
 use bevy::{
     feathers::{dark_theme::create_dark_theme, theme::UiTheme},
@@ -36,6 +38,8 @@ impl Plugin for EditorUiPlugin {
                 Startup,
                 (
                     menu::spawn_menu_bar,
+                    play_bar::spawn_play_bar,
+                    tools_bar::spawn_tools_bar,
                     status_bar::spawn_status_bar,
                     asset_browser::spawn_asset_browser,
                     inspector::spawn_inspector_panel,
@@ -46,6 +50,7 @@ impl Plugin for EditorUiPlugin {
                 Update,
                 (
                     menu::handle_menu_actions,
+                    tools_bar::update_active_tool_highlight,
                     status_bar::update_status_bar,
                     asset_browser::handle_spawn_asset_messages,
                     inspector::handle_inspector_toggle_messages,
