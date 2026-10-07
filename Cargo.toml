@@ -4,6 +4,18 @@ version = "0.1.0"
 edition = "2024"
 description = "A minimal, modular, extensible Bevy Scene Editor & Multi-Platform Exporter"
 
+[lib]
+name = "bevy_editor_lib"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bevy_editor"
+path = "src/main.rs"
+
+[[bin]]
+name = "bevylite"
+path = "src/bin/bevylite.rs"
+
 [dependencies]
 bevy = { path = "../Engine/bevy", default-features = true, features = [
     "bevy_inspector",

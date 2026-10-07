@@ -19,6 +19,7 @@ use crate::ui::theme::*;
 #[derive(Resource, Debug, Clone)]
 pub struct HierarchyState {
     pub is_collapsed: bool,
+    pub width: f32,
     #[allow(dead_code)]
     pub filter: String,
 }
@@ -27,6 +28,7 @@ impl Default for HierarchyState {
     fn default() -> Self {
         Self {
             is_collapsed: false,
+            width: 250.0,
             filter: String::new(),
         }
     }
@@ -35,6 +37,12 @@ impl Default for HierarchyState {
 // Markers for UI elements
 #[derive(Component)]
 pub struct HierarchyDockRoot;
+
+#[derive(Component)]
+pub struct HierarchyTitleGroup;
+
+#[derive(Component)]
+pub struct HierarchyActionsRow;
 
 #[derive(Component)]
 pub struct HierarchyListContainer;
@@ -110,6 +118,7 @@ pub fn spawn_hierarchy_panel(mut commands: Commands) {
     let title_group = commands
         .spawn((
             EditorInternal,
+            HierarchyTitleGroup,
             Node {
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
@@ -151,7 +160,7 @@ pub fn spawn_hierarchy_panel(mut commands: Commands) {
         ChildOf(title_group),
     ));
 
-    // Right: Collapse toggle button
+    // Right: Collapse & Drag-Resize toggle button
     let collapse_btn = commands
         .spawn((
             EditorInternal,
@@ -175,6 +184,15 @@ pub fn spawn_hierarchy_panel(mut commands: Commands) {
         .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
             if let Ok(mut bg) = bg.get_mut(trigger.entity) {
                 *bg = BackgroundColor(BG_INPUT);
+            }
+        })
+        .observe(|drag: On<bevy::picking::events::PointerDrag>, mut state: ResMut<HierarchyState>, mut dock_query: Query<&mut Node, With<HierarchyDockRoot>>| {
+            if !state.is_collapsed {
+                let new_width = (state.width + drag.distance.x * 0.05).clamp(180.0, 500.0);
+                state.width = new_width;
+                if let Ok(mut node) = dock_query.single_mut() {
+                    node.width = px(new_width);
+                }
             }
         })
         .observe(|click: On<PointerClick>, mut writer: MessageWriter<ToggleHierarchyDockMessage>| {
@@ -201,6 +219,7 @@ pub fn spawn_hierarchy_panel(mut commands: Commands) {
     let actions_row = commands
         .spawn((
             EditorInternal,
+            HierarchyActionsRow,
             Node {
                 height: px(30),
                 flex_direction: FlexDirection::Row,
@@ -208,6 +227,7 @@ pub fn spawn_hierarchy_panel(mut commands: Commands) {
                 padding: UiRect::axes(px(8), px(2)),
                 column_gap: px(4),
                 border: UiRect::bottom(px(1)),
+                overflow: Overflow::clip(),
                 ..default()
             },
             BackgroundColor(BG_INPUT),
@@ -541,6 +561,9 @@ pub fn handle_hierarchy_collapse(
     mut state: ResMut<HierarchyState>,
     mut reader: MessageReader<ToggleHierarchyDockMessage>,
     mut dock_query: Query<&mut Node, With<HierarchyDockRoot>>,
+    mut title_query: Query<&mut Node, (With<HierarchyTitleGroup>, Without<HierarchyDockRoot>, Without<HierarchyActionsRow>, Without<HierarchyListContainer>)>,
+    mut actions_query: Query<&mut Node, (With<HierarchyActionsRow>, Without<HierarchyDockRoot>, Without<HierarchyTitleGroup>, Without<HierarchyListContainer>)>,
+    mut list_query: Query<&mut Node, (With<HierarchyListContainer>, Without<HierarchyDockRoot>, Without<HierarchyTitleGroup>, Without<HierarchyActionsRow>)>,
     mut label_query: Query<&mut Text, With<HierarchyCollapseBtnLabel>>,
 ) {
     for _ in reader.read() {
@@ -548,10 +571,22 @@ pub fn handle_hierarchy_collapse(
 
         if let Ok(mut node) = dock_query.single_mut() {
             if state.is_collapsed {
-                node.width = px(36);
+                node.width = px(34);
             } else {
-                node.width = px(250);
+                node.width = px(state.width);
             }
+        }
+
+        if let Ok(mut title_node) = title_query.single_mut() {
+            title_node.display = if state.is_collapsed { Display::None } else { Display::Flex };
+        }
+
+        if let Ok(mut actions_node) = actions_query.single_mut() {
+            actions_node.display = if state.is_collapsed { Display::None } else { Display::Flex };
+        }
+
+        if let Ok(mut list_node) = list_query.single_mut() {
+            list_node.display = if state.is_collapsed { Display::None } else { Display::Flex };
         }
 
         if let Ok(mut label) = label_query.single_mut() {

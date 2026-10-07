@@ -29,12 +29,25 @@ use bevy::{
 use crate::scene::{components::*, EditorInternal};
 use crate::ui::theme::*;
 
+/// Docking zones for panels (Left, Right, or Floating).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PanelDockZone {
+    #[default]
+    Right,
+    Left,
+    Floating,
+}
+
 /// State managing the inspector's display mode, coordinate frame, and docking.
 #[derive(Resource, Debug, Clone)]
 pub struct InspectorState {
     pub is_debug_view: bool,
     pub is_global_coords: bool,
     pub is_collapsed: bool,
+    pub dock_zone: PanelDockZone,
+    pub width: f32,
+    #[allow(dead_code)]
+    pub is_dragging: bool,
 }
 
 impl Default for InspectorState {
@@ -43,6 +56,9 @@ impl Default for InspectorState {
             is_debug_view: false, // Default is clean Transform view
             is_global_coords: false, // Default is Local coordinates
             is_collapsed: false, // Default is expanded dock
+            dock_zone: PanelDockZone::Right,
+            width: 380.0,
+            is_dragging: false,
         }
     }
 }
@@ -68,6 +84,12 @@ pub struct ModeToggleLabel;
 
 #[derive(Component)]
 pub struct DockToggleLabel;
+
+#[derive(Component)]
+pub struct InspectorHeaderTitle;
+
+#[derive(Component)]
+pub struct InspectorModeBtn;
 
 #[derive(Component)]
 pub struct PositionDisplayLabel;
@@ -129,9 +151,8 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
                 top: px(36),
                 right: px(0),
                 bottom: px(28),
-                width: px(400),
+                width: px(380),
                 max_width: percent(45.0),
-                min_width: px(40),
                 border: UiRect::left(px(1)),
                 flex_direction: FlexDirection::Column,
                 overflow: Overflow::clip(),
@@ -153,6 +174,7 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::SpaceBetween,
                 padding: UiRect::axes(px(8), px(4)),
+                overflow: Overflow::clip(),
                 ..default()
             },
             BackgroundColor(BG_CARD),
@@ -164,6 +186,7 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
     // Header Title
     commands.spawn((
         EditorInternal,
+        InspectorHeaderTitle,
         Pickable::IGNORE,
         Text::new("Inspector"),
         TextFont {
@@ -192,6 +215,7 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
     let mode_btn = commands
         .spawn((
             EditorInternal,
+            InspectorModeBtn,
             Node {
                 padding: UiRect::axes(px(8), px(3)),
                 border: UiRect::all(px(1)),
@@ -232,7 +256,7 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
         ChildOf(mode_btn),
     ));
 
-    // Dock Collapse / Expand Button
+    // Dock Drag Handle & Toggle Button
     let dock_btn = commands
         .spawn((
             EditorInternal,
@@ -256,6 +280,81 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
                 *bg = BackgroundColor(BG_INPUT);
             }
         })
+        .observe(|_drag: On<bevy::picking::events::PointerDrag>,
+                  window: Query<&Window, With<bevy::window::PrimaryWindow>>,
+                  mut state: ResMut<InspectorState>,
+                  mut dock_query: Query<(&mut Node, &mut BorderColor), With<InspectorDockRoot>>| {
+            state.is_dragging = true;
+            if let Ok(win) = window.single() {
+                if let Some(cursor) = win.cursor_position() {
+                    let win_width = win.width();
+                    if let Ok((mut node, mut border)) = dock_query.single_mut() {
+                        *border = BorderColor::all(BORDER_ACCENT);
+                        if cursor.x < win_width * 0.35 {
+                            // Snap to Left Dock Zone
+                            node.left = px(0);
+                            node.right = Val::Auto;
+                            node.border = UiRect::right(px(1));
+                            state.dock_zone = PanelDockZone::Left;
+                        } else if cursor.x > win_width * 0.65 {
+                            // Snap to Right Dock Zone
+                            node.left = Val::Auto;
+                            node.right = px(0);
+                            node.border = UiRect::left(px(1));
+                            state.dock_zone = PanelDockZone::Right;
+                        } else {
+                            // Free floating
+                            let half_w = state.width * 0.5;
+                            node.left = px((cursor.x - half_w).clamp(10.0, win_width - state.width - 10.0));
+                            node.top = px((cursor.y - 15.0).clamp(40.0, win.height() - 200.0));
+                            node.right = Val::Auto;
+                            node.border = UiRect::all(px(1));
+                            state.dock_zone = PanelDockZone::Floating;
+                        }
+                    }
+                }
+            }
+        })
+        .observe(|_drag_end: On<bevy::picking::events::PointerDragEnd>,
+                  mut state: ResMut<InspectorState>,
+                  mut dock_query: Query<(&mut Node, &mut BorderColor), With<InspectorDockRoot>>,
+                  mut dock_label_query: Query<&mut Text, With<DockToggleLabel>>| {
+            state.is_dragging = false;
+            if let Ok((mut node, mut border)) = dock_query.single_mut() {
+                *border = BorderColor::all(BORDER_SUBTLE);
+                match state.dock_zone {
+                    PanelDockZone::Right => {
+                        node.left = Val::Auto;
+                        node.right = px(0);
+                        node.top = px(36);
+                        node.bottom = px(28);
+                        node.border = UiRect::left(px(1));
+                        node.border_radius = BorderRadius::ZERO;
+                    }
+                    PanelDockZone::Left => {
+                        node.left = px(0);
+                        node.right = Val::Auto;
+                        node.top = px(36);
+                        node.bottom = px(28);
+                        node.border = UiRect::right(px(1));
+                        node.border_radius = BorderRadius::ZERO;
+                    }
+                    PanelDockZone::Floating => {
+                        node.bottom = px(28);
+                        node.border = UiRect::all(px(1));
+                        node.border_radius = BorderRadius::all(px(6));
+                    }
+                }
+            }
+            if let Ok(mut label) = dock_label_query.single_mut() {
+                label.0 = match state.dock_zone {
+                    PanelDockZone::Right => "⇲ Dock Right".to_string(),
+                    PanelDockZone::Left => "⇱ Dock Left".to_string(),
+                    PanelDockZone::Floating => "⧉ Floating".to_string(),
+                };
+            }
+            info!("Inspector docked to {:?}", state.dock_zone);
+        })
         .observe(|click: On<PointerClick>, mut writer: MessageWriter<ToggleDockMessage>| {
             if click.button == PointerButton::Primary {
                 writer.write(ToggleDockMessage);
@@ -267,7 +366,7 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
         EditorInternal,
         DockToggleLabel,
         Pickable::IGNORE,
-        Text::new("Dock ▶"),
+        Text::new("⇲ Dock Right"),
         TextFont {
             font_size: bevy::text::FontSize::Px(11.0),
             ..default()
@@ -771,8 +870,10 @@ pub fn handle_inspector_toggle_messages(
     mut coord_msgs: MessageReader<ToggleCoordModeMessage>,
     mut state: ResMut<InspectorState>,
     mut dock_query: Query<&mut Node, With<InspectorDockRoot>>,
-    mut clean_query: Query<&mut Node, (With<CleanViewRoot>, Without<InspectorDockRoot>, Without<DebugViewRoot>)>,
-    mut debug_query: Query<&mut Node, (With<DebugViewRoot>, Without<InspectorDockRoot>, Without<CleanViewRoot>)>,
+    mut clean_query: Query<&mut Node, (With<CleanViewRoot>, Without<InspectorDockRoot>, Without<DebugViewRoot>, Without<InspectorHeaderTitle>, Without<InspectorModeBtn>)>,
+    mut debug_query: Query<&mut Node, (With<DebugViewRoot>, Without<InspectorDockRoot>, Without<CleanViewRoot>, Without<InspectorHeaderTitle>, Without<InspectorModeBtn>)>,
+    mut title_query: Query<&mut Node, (With<InspectorHeaderTitle>, Without<InspectorDockRoot>, Without<CleanViewRoot>, Without<DebugViewRoot>, Without<InspectorModeBtn>)>,
+    mut mode_btn_query: Query<&mut Node, (With<InspectorModeBtn>, Without<InspectorDockRoot>, Without<CleanViewRoot>, Without<DebugViewRoot>, Without<InspectorHeaderTitle>)>,
     mut mode_label_query: Query<&mut Text, (With<ModeToggleLabel>, Without<DockToggleLabel>, Without<CoordModeLabel>)>,
     mut dock_label_query: Query<&mut Text, (With<DockToggleLabel>, Without<ModeToggleLabel>, Without<CoordModeLabel>)>,
     mut coord_label_query: Query<&mut Text, (With<CoordModeLabel>, Without<ModeToggleLabel>, Without<DockToggleLabel>)>,
@@ -788,13 +889,35 @@ pub fn handle_inspector_toggle_messages(
     }
 
     if state.is_changed() {
-        // Update dock root width
+        // Update dock root width and position
         if let Ok(mut dock_node) = dock_query.single_mut() {
             if state.is_collapsed {
-                dock_node.width = px(40);
+                dock_node.width = px(34);
             } else {
-                dock_node.width = px(400);
+                dock_node.width = px(state.width);
             }
+
+            match state.dock_zone {
+                PanelDockZone::Right => {
+                    dock_node.left = Val::Auto;
+                    dock_node.right = px(0);
+                    dock_node.border = UiRect::left(px(1));
+                }
+                PanelDockZone::Left => {
+                    dock_node.left = px(0);
+                    dock_node.right = Val::Auto;
+                    dock_node.border = UiRect::right(px(1));
+                }
+                PanelDockZone::Floating => {}
+            }
+        }
+
+        // Toggle header title and mode button visibility
+        if let Ok(mut title_node) = title_query.single_mut() {
+            title_node.display = if state.is_collapsed { Display::None } else { Display::Flex };
+        }
+        if let Ok(mut mode_btn_node) = mode_btn_query.single_mut() {
+            mode_btn_node.display = if state.is_collapsed { Display::None } else { Display::Flex };
         }
 
         // Update clean view vs debug view visibility
@@ -826,9 +949,17 @@ pub fn handle_inspector_toggle_messages(
         // Update dock label
         if let Ok(mut dock_txt) = dock_label_query.single_mut() {
             dock_txt.0 = if state.is_collapsed {
-                "◀ Dock".to_string()
+                match state.dock_zone {
+                    PanelDockZone::Right => "◀".to_string(),
+                    PanelDockZone::Left => "▶".to_string(),
+                    PanelDockZone::Floating => "⧉".to_string(),
+                }
             } else {
-                "Dock ▶".to_string()
+                match state.dock_zone {
+                    PanelDockZone::Right => "⇲ Dock Right".to_string(),
+                    PanelDockZone::Left => "⇱ Dock Left".to_string(),
+                    PanelDockZone::Floating => "⧉ Floating".to_string(),
+                }
             };
         }
 
