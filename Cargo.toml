@@ -1,0 +1,30 @@
+[package]
+name = "bevy_editor"
+version = "0.1.0"
+edition = "2024"
+description = "A minimal, modular, extensible Bevy Scene Editor & Multi-Platform Exporter"
+
+[dependencies]
+bevy = { path = "../Engine/bevy", default-features = true, features = [
+    "bevy_inspector",
+    "bevy_feathers",
+    "bevy_camera_controller",
+    "free_camera",
+    "bevy_scene",
+    "bevy_remote",
+    "serialize",
+    "debug",
+] }
+rfd = "0.15"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.dev]
+opt-level = 1
+debug = 0
+incremental = false
+
+[profile.dev.package."*"]
+opt-level = 3
+debug = 0
+
