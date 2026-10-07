@@ -83,15 +83,32 @@
    - Browsing `assets/` directory with file icons.
    - Native drag-and-drop ingestion of 3D models (`.glb`/`.gltf`) and scenes (`.ron`).
    - Click-to-spawn items into the 3D scene.
+   - Directory hover targeting for dragging files directly into folders.
 5. **Component Authoring**:
    - `+ Script (Lua)`, `+ Spin Animation`, `+ Velocity`, `+ Point Light`, `+ Gameplay Tag`.
+6. **3D Viewport Raycast Picking**:
+   - Global `On<PointerClick>` with `MeshPickingCamera`.
+   - Ancestor traversal to automatically map clicked mesh children to the authorable `SceneEntity` root.
+7. **Active Context Bottom-Right Badge**:
+   - Real-time indicator displaying the selected entity name and ID (e.g. `Active: Cube (Entity(42v0))`).
+8. **Responsive Docking System (Jackdaw-inspired)**:
+   - Dockable Inspector with responsive auto-fit (`max_width: percent(45.0)`) preventing off-screen overflow.
+   - Dockable Project Explorer with collapsible header and `▼`/`▲` toggle.
 
 ---
 
-### 🟡 In Progress / Polish
-- [ ] Visual Transform Gizmos in 3D viewport (using `bevy_gizmos` arrows for Translate/Rotate/Scale handles).
-- [ ] Drag-to-assign Entity picker field in the Inspector for `entity_refs`.
-- [ ] Console / Output Log dockable panel displaying engine logs and script print statements.
+### 🟡 Recommended Next Line of Items (Immediate MVP Next Steps)
+1. **Visual 3D Transform Gizmos (`bevy_gizmos`)**:
+   - Render 3D axis arrows (Red = X, Green = Y, Blue = Z) on the selected entity.
+   - Dragging gizmo handles translates/rotates/scales the object directly in the viewport.
+2. **Selection Bounding Box & Wireframe Highlight**:
+   - Draw a subtle wireframe outline or AABB bounding box gizmo around the active selection.
+3. **Hierarchical Scene Tree Panel (Outliner)**:
+   - A dockable panel showing the parent-child entity tree with search filtering and visibility toggle eye icons.
+4. **Drag-to-Assign Entity Picker in Inspector**:
+   - Allow dragging an entity from the Outliner or 3D viewport into a script reference slot.
+5. **Console / Output Log Dockable Panel**:
+   - Real-time event log capturing engine warnings, asset import events, and compilation notices.
 
 ---
 

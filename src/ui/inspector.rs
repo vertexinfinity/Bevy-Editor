@@ -728,10 +728,37 @@ fn spawn_add_comp_btn(commands: &mut Commands, parent: Entity, label: &str, kind
 /// Global observer: clicks on non-editor entities in the 3D scene select them in the inspector.
 pub fn select_entity_on_viewport_click(
     click: On<PointerClick>,
-    non_editor: Query<(), Without<EditorInternal>>,
+    scene_entities: Query<(), With<crate::scene::SceneEntity>>,
+    parent_query: Query<&ChildOf>,
+    editor_internal: Query<(), With<EditorInternal>>,
     mut selection: ResMut<InspectorSelection>,
 ) {
-    if click.button == PointerButton::Primary && non_editor.contains(click.entity) {
+    if click.button != PointerButton::Primary {
+        return;
+    }
+
+    // Do not select editor UI elements
+    if editor_internal.contains(click.entity) {
+        return;
+    }
+
+    // Resolve clicked entity or its ancestor marked with SceneEntity
+    let mut current = click.entity;
+    loop {
+        if scene_entities.contains(current) {
+            info!("Selected 3D scene object: {:?}", current);
+            selection.0 = Some(current);
+            return;
+        }
+        if let Ok(child_of) = parent_query.get(current) {
+            current = child_of.parent();
+        } else {
+            break;
+        }
+    }
+
+    // Fallback: if not explicitly marked SceneEntity, select entity directly if not editor internal
+    if !editor_internal.contains(click.entity) {
         selection.0 = Some(click.entity);
     }
 }
