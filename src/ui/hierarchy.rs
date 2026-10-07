@@ -206,9 +206,9 @@ pub fn spawn_hierarchy_panel(mut commands: Commands) {
         EditorInternal,
         HierarchyCollapseBtnLabel,
         Pickable::IGNORE,
-        Text::new("◀"),
+        Text::new("<"),
         TextFont {
-            font_size: bevy::text::FontSize::Px(10.0),
+            font_size: bevy::text::FontSize::Px(11.0),
             ..default()
         },
         TextColor(TEXT_SECONDARY),
@@ -236,10 +236,10 @@ pub fn spawn_hierarchy_panel(mut commands: Commands) {
         ))
         .id();
 
-    spawn_primitive_btn(&mut commands, actions_row, "+ Cube", SpawnPrimitiveKind::Cube);
-    spawn_primitive_btn(&mut commands, actions_row, "+ Sphere", SpawnPrimitiveKind::Sphere);
-    spawn_primitive_btn(&mut commands, actions_row, "+ Light", SpawnPrimitiveKind::Light);
-    spawn_primitive_btn(&mut commands, actions_row, "+ Empty", SpawnPrimitiveKind::Empty);
+    spawn_primitive_btn(&mut commands, actions_row, "+Cube", SpawnPrimitiveKind::Cube);
+    spawn_primitive_btn(&mut commands, actions_row, "+Sphere", SpawnPrimitiveKind::Sphere);
+    spawn_primitive_btn(&mut commands, actions_row, "+Light", SpawnPrimitiveKind::Light);
+    spawn_primitive_btn(&mut commands, actions_row, "+Empty", SpawnPrimitiveKind::Empty);
 
     // 3. Entity List Container
     commands.spawn((
@@ -312,7 +312,7 @@ fn spawn_primitive_btn(
 /// Updates the hierarchy tree view to reflect all active `SceneEntity` components.
 pub fn update_hierarchy_list(
     mut commands: Commands,
-    entities_query: Query<(Entity, Option<&Name>, Option<&DirectionalLight>, Option<&Mesh3d>), With<SceneEntity>>,
+    entities_query: Query<(Entity, Option<&Name>, Option<&DirectionalLight>, Option<&Mesh3d>, Option<&Visibility>), With<SceneEntity>>,
     selection: Res<InspectorSelection>,
     mut count_label_query: Query<&mut Text, With<HierarchyCountLabel>>,
     list_container_query: Query<Entity, With<HierarchyListContainer>>,
@@ -339,16 +339,17 @@ pub fn update_hierarchy_list(
     }
 
     // Spawn new rows
-    for (entity, name, is_light, is_mesh) in &entities_query {
+    for (entity, name, is_light, is_mesh, vis) in &entities_query {
         let is_selected = selection.0 == Some(entity);
-        let name_str = name.map(|n| n.as_str()).unwrap_or("Unnamed Entity");
+        let is_hidden = vis == Some(&Visibility::Hidden);
+        let name_str = name.map(|n| n.as_str()).unwrap_or("Entity");
 
-        let icon = if is_light.is_some() {
-            "💡"
+        let type_tag = if is_light.is_some() {
+            "L"
         } else if is_mesh.is_some() {
-            "📦"
+            "M"
         } else {
-            "🌐"
+            "•"
         };
 
         let row_bg = if is_selected {
@@ -365,6 +366,8 @@ pub fn update_hierarchy_list(
 
         let text_color = if is_selected {
             ACCENT_CYAN
+        } else if is_hidden {
+            TEXT_MUTED
         } else {
             TEXT_PRIMARY
         };
@@ -410,7 +413,7 @@ pub fn update_hierarchy_list(
             })
             .id();
 
-        // Left: Icon + Name
+        // Left: Type Tag + Name
         let label_group = commands
             .spawn((
                 EditorInternal,
@@ -428,18 +431,19 @@ pub fn update_hierarchy_list(
         commands.spawn((
             EditorInternal,
             Pickable::IGNORE,
-            Text::new(icon),
+            Text::new(type_tag),
             TextFont {
-                font_size: bevy::text::FontSize::Px(11.0),
+                font_size: bevy::text::FontSize::Px(10.0),
                 ..default()
             },
+            TextColor(ACCENT_CYAN),
             ChildOf(label_group),
         ));
 
         commands.spawn((
             EditorInternal,
             Pickable::IGNORE,
-            Text::new(name_str),
+            Text::new(if is_hidden { format!("{name_str} (Hidden)") } else { name_str.to_string() }),
             TextFont {
                 font_size: bevy::text::FontSize::Px(11.5),
                 ..default()
@@ -448,7 +452,56 @@ pub fn update_hierarchy_list(
             ChildOf(label_group),
         ));
 
-        // Right: Entity ID badge
+        // Right Group: Visibility Eye Toggle + Entity ID badge
+        let right_group = commands
+            .spawn((
+                EditorInternal,
+                Node {
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
+                    column_gap: px(6),
+                    ..default()
+                },
+                ChildOf(row),
+            ))
+            .id();
+
+        // Visibility Toggle Button
+        let vis_btn = commands
+            .spawn((
+                EditorInternal,
+                Node {
+                    padding: UiRect::axes(px(4), px(1)),
+                    border_radius: BorderRadius::all(px(2)),
+                    ..default()
+                },
+                BackgroundColor(if is_hidden { BG_INPUT } else { ACCENT_CYAN_DIM }),
+                ChildOf(right_group),
+            ))
+            .observe(move |click: On<PointerClick>, mut vis_query: Query<&mut Visibility>, mut commands: Commands| {
+                if click.button == PointerButton::Primary {
+                    if let Ok(mut v) = vis_query.get_mut(entity) {
+                        *v = if *v == Visibility::Hidden { Visibility::Inherited } else { Visibility::Hidden };
+                    } else {
+                        commands.entity(entity).insert(Visibility::Hidden);
+                    }
+                }
+            })
+            .id();
+
+        commands.spawn((
+            EditorInternal,
+            Pickable::IGNORE,
+            Text::new(if is_hidden { "OFF" } else { "ON" }),
+            TextFont {
+                font_size: bevy::text::FontSize::Px(9.0),
+                ..default()
+            },
+            TextColor(if is_hidden { TEXT_MUTED } else { ACCENT_CYAN }),
+            ChildOf(vis_btn),
+        ));
+
+        // Entity ID badge
         commands.spawn((
             EditorInternal,
             Pickable::IGNORE,
@@ -458,7 +511,7 @@ pub fn update_hierarchy_list(
                 ..default()
             },
             TextColor(TEXT_MUTED),
-            ChildOf(row),
+            ChildOf(right_group),
         ));
     }
 }
@@ -590,7 +643,7 @@ pub fn handle_hierarchy_collapse(
         }
 
         if let Ok(mut label) = label_query.single_mut() {
-            label.0 = if state.is_collapsed { "▶" } else { "◀" }.to_string();
+            label.0 = if state.is_collapsed { ">" } else { "<" }.to_string();
         }
     }
 }

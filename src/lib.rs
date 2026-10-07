@@ -30,6 +30,8 @@ pub fn run_editor() {
         )
         .add_plugins((
             FeathersPlugins,
+            MeshPickingPlugin,
+            bevy::gizmos::transform_gizmo::TransformGizmoPlugin,
             core::CoreEditorPlugin,
             camera::EditorCameraPlugin,
             scene::SceneManagerPlugin,

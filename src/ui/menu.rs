@@ -58,7 +58,7 @@ pub fn spawn_menu_bar(mut commands: Commands) {
         ))
         .id();
 
-    // Left Container: Brand + Scene Actions
+    // 1. Left Container: Brand + Scene Actions
     let left_group = commands
         .spawn((
             EditorInternal,
@@ -81,7 +81,7 @@ pub fn spawn_menu_bar(mut commands: Commands) {
                 align_items: AlignItems::Center,
                 column_gap: px(6),
                 padding: UiRect::axes(px(8), px(3)),
-                margin: UiRect::right(px(10)),
+                margin: UiRect::right(px(6)),
                 border_radius: BorderRadius::all(px(4)),
                 ..default()
             },
@@ -94,9 +94,9 @@ pub fn spawn_menu_bar(mut commands: Commands) {
     commands.spawn((
         EditorInternal,
         Pickable::IGNORE,
-        Text::new("◈"),
+        Text::new("BL"),
         TextFont {
-            font_size: bevy::text::FontSize::Px(12.0),
+            font_size: bevy::text::FontSize::Px(11.0),
             ..default()
         },
         TextColor(ACCENT_CYAN),
@@ -108,7 +108,7 @@ pub fn spawn_menu_bar(mut commands: Commands) {
         Pickable::IGNORE,
         Text::new("BEVYLITE"),
         TextFont {
-            font_size: bevy::text::FontSize::Px(12.0),
+            font_size: bevy::text::FontSize::Px(11.5),
             ..default()
         },
         TextColor(TEXT_PRIMARY),
@@ -122,39 +122,82 @@ pub fn spawn_menu_bar(mut commands: Commands) {
     spawn_menu_button(&mut commands, left_group, "Save", MenuAction::SaveScene);
     spawn_menu_button(&mut commands, left_group, "Save As...", MenuAction::SaveAsScene);
 
-    // Separator
-    commands.spawn((
-        EditorInternal,
-        Pickable::IGNORE,
-        Node {
-            width: px(1),
-            height: px(18),
-            margin: UiRect::axes(px(4), px(0)),
-            ..default()
-        },
-        BackgroundColor(BORDER_CARD),
-        ChildOf(left_group),
-    ));
+    // 2. Center Container: Transport Controls (Play / Pause / Stop / Step)
+    let center_group = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: px(4),
+                padding: UiRect::axes(px(6), px(2)),
+                border: UiRect::all(px(1)),
+                border_radius: BorderRadius::all(px(5)),
+                ..default()
+            },
+            BackgroundColor(BG_CARD),
+            BorderColor::all(BORDER_CARD),
+            ChildOf(bar_root),
+        ))
+        .id();
 
-    // Multi-Platform Export Action Pills
-    spawn_menu_button(&mut commands, left_group, "Android", MenuAction::ExportAndroid);
-    spawn_menu_button(&mut commands, left_group, "Windows", MenuAction::ExportWindows);
-    spawn_menu_button(&mut commands, left_group, "Web", MenuAction::ExportWeb);
-    spawn_menu_button(&mut commands, left_group, "iOS", MenuAction::ExportIos);
+    spawn_play_button(&mut commands, center_group, "PLAY", crate::core::play_mode::PlayModeAction::Play, true);
+    spawn_play_button(&mut commands, center_group, "PAUSE", crate::core::play_mode::PlayModeAction::Pause, false);
+    spawn_play_button(&mut commands, center_group, "STOP", crate::core::play_mode::PlayModeAction::Stop, false);
+    spawn_play_button(&mut commands, center_group, "STEP", crate::core::play_mode::PlayModeAction::Step, false);
+    spawn_play_button(&mut commands, center_group, "WINDOW", crate::core::play_mode::PlayModeAction::PlayInWindow, false);
 
-    // Right Container: Workspace layout switcher + Scene chip
+    // 3. Right Container: Platform Exports + MCP Status + Workspace layout
     let right_group = commands
         .spawn((
             EditorInternal,
             Node {
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                column_gap: px(8),
+                column_gap: px(6),
                 ..default()
             },
             ChildOf(bar_root),
         ))
         .id();
+
+    // Multi-Platform Export Action Pills
+    spawn_menu_button(&mut commands, right_group, "Android", MenuAction::ExportAndroid);
+    spawn_menu_button(&mut commands, right_group, "Windows", MenuAction::ExportWindows);
+    spawn_menu_button(&mut commands, right_group, "Web", MenuAction::ExportWeb);
+    spawn_menu_button(&mut commands, right_group, "iOS", MenuAction::ExportIos);
+
+    // MCP Live Status Pill
+    let mcp_pill = commands
+        .spawn((
+            EditorInternal,
+            McpStatusLabel,
+            Node {
+                padding: UiRect::axes(px(8), px(3)),
+                border: UiRect::all(px(1)),
+                border_radius: BorderRadius::all(px(4)),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: px(4),
+                ..default()
+            },
+            BackgroundColor(BG_CARD),
+            BorderColor::all(BORDER_ACCENT),
+            ChildOf(right_group),
+        ))
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new("MCP: READY"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(10.5),
+            ..default()
+        },
+        TextColor(ACCENT_CYAN),
+        ChildOf(mcp_pill),
+    ));
 
     // Workspace layout selector pill
     let layout_chip = commands
@@ -178,7 +221,7 @@ pub fn spawn_menu_bar(mut commands: Commands) {
     commands.spawn((
         EditorInternal,
         Pickable::IGNORE,
-        Text::new("Layout: Default ▾"),
+        Text::new("Layout: Default"),
         TextFont {
             font_size: bevy::text::FontSize::Px(11.0),
             ..default()
@@ -242,6 +285,68 @@ fn spawn_menu_button(
             ..default()
         },
         TextColor(TEXT_PRIMARY),
+        ChildOf(btn),
+    ));
+}
+
+#[derive(Component)]
+pub struct McpStatusLabel;
+
+fn spawn_play_button(
+    commands: &mut Commands,
+    parent: Entity,
+    label: &str,
+    action: crate::core::play_mode::PlayModeAction,
+    is_primary: bool,
+) {
+    let (normal_bg, hover_bg) = if is_primary {
+        (ACCENT_EMERALD, ACCENT_EMERALD_HOVER)
+    } else {
+        (BG_INPUT, BG_HOVER)
+    };
+
+    let btn = commands
+        .spawn((
+            EditorInternal,
+            action,
+            Node {
+                padding: UiRect::axes(px(8), px(3)),
+                border: UiRect::all(px(1)),
+                border_radius: BorderRadius::all(px(4)),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(normal_bg),
+            BorderColor::all(BORDER_SUBTLE),
+            ChildOf(parent),
+        ))
+        .observe(move |trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(hover_bg);
+            }
+        })
+        .observe(move |trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(normal_bg);
+            }
+        })
+        .observe(move |click: On<PointerClick>, mut writer: MessageWriter<crate::core::play_mode::PlayModeAction>| {
+            if click.button == PointerButton::Primary {
+                writer.write(action);
+            }
+        })
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new(label),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(10.5),
+            ..default()
+        },
+        TextColor(if is_primary { Color::WHITE } else { TEXT_PRIMARY }),
         ChildOf(btn),
     ));
 }
@@ -356,5 +461,45 @@ fn trigger_export(world: &mut World, target_id: &str) {
             project_name: "BevyGame".to_string(),
             scene_path: current_scene_path,
         });
+    }
+}
+
+/// State tracking live commands received from the MCP Server bridge file.
+#[derive(Resource, Default)]
+pub struct McpBridgeState {
+    pub last_timestamp: u64,
+}
+
+/// Polls `assets/.mcp_bridge.json` to reflect live AI/MCP operations directly in the editor UI.
+pub fn update_mcp_bridge_status(
+    mut mcp_state: ResMut<McpBridgeState>,
+    mut label_query: Query<&mut Text, With<McpStatusLabel>>,
+    mut export_status: ResMut<crate::export::ExportStatus>,
+) {
+    let bridge_path = std::path::Path::new("assets/.mcp_bridge.json");
+    if let Ok(metadata) = std::fs::metadata(bridge_path) {
+        if let Ok(modified) = metadata.modified() {
+            let dur = modified.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+            if dur > mcp_state.last_timestamp {
+                mcp_state.last_timestamp = dur;
+                if let Ok(content) = std::fs::read_to_string(bridge_path) {
+                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                        let action = val.get("action").and_then(|a| a.as_str()).unwrap_or("Active");
+                        let entity = val.get("entity").and_then(|e| e.as_str()).unwrap_or("");
+                        let details = val.get("details").and_then(|d| d.as_str()).unwrap_or("");
+
+                        if let Ok(mut txt) = label_query.single_mut() {
+                            txt.0 = format!("MCP: {} ({})", action.to_uppercase(), entity);
+                        }
+
+                        *export_status = crate::export::ExportStatus::Success {
+                            target: "MCP Controller".to_string(),
+                            message: format!("AI Event: {} on '{}' -> {}", action, entity, details),
+                            path: std::path::PathBuf::from("assets/.mcp_bridge.json"),
+                        };
+                    }
+                }
+            }
+        }
     }
 }

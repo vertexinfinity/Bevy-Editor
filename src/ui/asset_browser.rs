@@ -205,7 +205,7 @@ pub fn spawn_asset_browser(mut commands: Commands) {
     commands.spawn((
         EditorInternal,
         Pickable::IGNORE,
-        Text::new("⬆ Up"),
+        Text::new("^ Up"),
         TextFont {
             font_size: bevy::text::FontSize::Px(10.5),
             ..default()
@@ -248,9 +248,9 @@ pub fn spawn_asset_browser(mut commands: Commands) {
     commands.spawn((
         EditorInternal,
         Pickable::IGNORE,
-        Text::new("🔄"),
+        Text::new("Sync"),
         TextFont {
-            font_size: bevy::text::FontSize::Px(11.0),
+            font_size: bevy::text::FontSize::Px(10.5),
             ..default()
         },
         TextColor(TEXT_SECONDARY),
@@ -292,7 +292,7 @@ pub fn spawn_asset_browser(mut commands: Commands) {
         EditorInternal,
         ExplorerCollapseLabel,
         Pickable::IGNORE,
-        Text::new("▼"),
+        Text::new("v"),
         TextFont {
             font_size: bevy::text::FontSize::Px(10.0),
             ..default()
@@ -358,15 +358,15 @@ fn populate_asset_list(commands: &mut Commands, parent: Entity, current_dir: &Pa
 
     for (path, name, is_dir) in entries {
         let icon = if is_dir {
-            "📁"
+            "[DIR]"
         } else if name.ends_with(".glb") || name.ends_with(".gltf") {
-            "📦"
+            "[3D]"
         } else if name.ends_with(".ron") || name.ends_with(".bsn") {
-            "🗺️"
+            "[SCN]"
         } else if name.ends_with(".png") || name.ends_with(".jpg") {
-            "🖼️"
+            "[IMG]"
         } else {
-            "📄"
+            "[FILE]"
         };
 
         let label = if is_dir { format!("{icon} {name}/") } else { format!("{icon} {name}") };
@@ -479,12 +479,12 @@ pub fn handle_explorer_dock_and_refresh(
         }
 
         if let Ok(mut label) = collapse_label_query.single_mut() {
-            label.0 = if state.is_collapsed { "▲".to_string() } else { "▼".to_string() };
+            label.0 = if state.is_collapsed { "^".to_string() } else { "v".to_string() };
         }
 
         if let Ok(mut breadcrumb) = breadcrumb_query.single_mut() {
             let path_str = state.current_dir.to_string_lossy().replace('\\', "/");
-            breadcrumb.0 = format!("📁 {path_str}/");
+            breadcrumb.0 = format!("{path_str}/");
         }
     }
 

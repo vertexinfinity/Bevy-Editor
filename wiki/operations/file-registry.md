@@ -28,6 +28,8 @@ Bevy-Editor (src/)
 │   └── serialization.rs      # SceneSerializer / SceneLoader abstractions & RonSceneSerializer
 ├── ui/                       # Decoupled UI Panels & Overlays
 │   ├── mod.rs                # EditorUiPlugin, system registration, dark theme
+│   ├── theme.rs              # Design tokens (BG_SHELL, BORDER_ACCENT, AXIS_X/Y/Z)
+│   ├── hierarchy.rs          # Scene Hierarchy (Outliner) with primitive spawners & collapse
 │   ├── asset_browser.rs      # Project Explorer, dockable tab, directory hover detection
 │   ├── inspector.rs          # Clean Transform view, Debug view, mesh click observer, responsive dock
 │   ├── menu.rs               # Top menu bar (New/Open/Save Scene, New Project, Export)
@@ -67,6 +69,8 @@ Bevy-Editor (src/)
 | **Scene / Save** | [`src/scene/save_load.rs`](file:///D:/Repos/Bevy/Bevy-Editor/src/scene/save_load.rs) | `EditorInternal`, `SceneEntity`, `save_world_to_scene` | DynamicWorld serialization and markers safeguarding editor UI from clearance | 🟢 Confirmed |
 | **Scene / Serde** | [`src/scene/serialization.rs`](file:///D:/Repos/Bevy/Bevy-Editor/src/scene/serialization.rs) | `SceneSerializer`, `SceneLoader`, `RonSceneSerializer` | Decoupled scene serialization abstraction | 🟢 Confirmed |
 | **Scene / Mod** | [`src/scene/mod.rs`](file:///D:/Repos/Bevy/Bevy-Editor/src/scene/mod.rs) | `SceneManagerPlugin`, `CurrentScene` | Manages active scene state and aggregates scene plugins | 🟢 Confirmed |
+| **UI / Theme** | [`src/ui/theme.rs`](file:///D:/Repos/Bevy/Bevy-Editor/src/ui/theme.rs) | `BG_SHELL`, `BORDER_ACCENT`, `AXIS_X`, `TEXT_PRIMARY` | Linear/Figma dark theme design tokens & colors | 🟢 Confirmed |
+| **UI / Hierarchy** | [`src/ui/hierarchy.rs`](file:///D:/Repos/Bevy/Bevy-Editor/src/ui/hierarchy.rs) | `HierarchyState`, `HierarchyDockRoot`, `SpawnPrimitiveMessage` | Dockable scene outliner tree, primitive spawners, selection sync | 🟢 Confirmed |
 | **UI / Browser** | [`src/ui/asset_browser.rs`](file:///D:/Repos/Bevy/Bevy-Editor/src/ui/asset_browser.rs) | `AssetItem`, `HoveredAssetDirectory`, `ProjectExplorerDockRoot` | Dockable Project Explorer with folder hover detection and live refresh | 🟢 Confirmed |
 | **UI / Inspector** | [`src/ui/inspector.rs`](file:///D:/Repos/Bevy/Bevy-Editor/src/ui/inspector.rs) | `InspectorState`, `InspectorDockRoot`, `select_entity_on_viewport_click` | Responsive dockable inspector, clean transform view, raycast mesh selector | 🟢 Confirmed |
 | **UI / Menu** | [`src/ui/menu.rs`](file:///D:/Repos/Bevy/Bevy-Editor/src/ui/menu.rs) | `MenuAction`, `MenuActionMessage`, `spawn_menu_bar` | Top application menu bar with file dialogs and action routing | 🟢 Confirmed |

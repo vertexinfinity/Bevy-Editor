@@ -62,7 +62,7 @@ pub struct SelectTool;
 impl EditorTool for SelectTool {
     fn id(&self) -> &'static str { "select" }
     fn name(&self) -> &'static str { "Select" }
-    fn icon(&self) -> &'static str { "↖" }
+    fn icon(&self) -> &'static str { "Q" }
     fn shortcut_key(&self) -> Option<KeyCode> { Some(KeyCode::KeyQ) }
 }
 
@@ -70,7 +70,7 @@ pub struct TranslateTool;
 impl EditorTool for TranslateTool {
     fn id(&self) -> &'static str { "translate" }
     fn name(&self) -> &'static str { "Move" }
-    fn icon(&self) -> &'static str { "✥" }
+    fn icon(&self) -> &'static str { "W" }
     fn shortcut_key(&self) -> Option<KeyCode> { Some(KeyCode::KeyW) }
 }
 
@@ -78,7 +78,7 @@ pub struct RotateTool;
 impl EditorTool for RotateTool {
     fn id(&self) -> &'static str { "rotate" }
     fn name(&self) -> &'static str { "Rotate" }
-    fn icon(&self) -> &'static str { "⟳" }
+    fn icon(&self) -> &'static str { "E" }
     fn shortcut_key(&self) -> Option<KeyCode> { Some(KeyCode::KeyE) }
 }
 
@@ -86,7 +86,7 @@ pub struct ScaleTool;
 impl EditorTool for ScaleTool {
     fn id(&self) -> &'static str { "scale" }
     fn name(&self) -> &'static str { "Scale" }
-    fn icon(&self) -> &'static str { "⤢" }
+    fn icon(&self) -> &'static str { "R" }
     fn shortcut_key(&self) -> Option<KeyCode> { Some(KeyCode::KeyR) }
 }
 

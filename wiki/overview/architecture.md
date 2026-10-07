@@ -40,6 +40,7 @@ graph TD
 
     subgraph "Decoupled UI Layer"
         UIPlugin --> Insp[Responsive Inspector & Clean Transform]
+        UIPlugin --> Hier[Dockable Scene Hierarchy & Outliner]
         UIPlugin --> Browser[Dockable Project Explorer]
         UIPlugin --> Menu[Menu Bar & Project Scaffolder]
         UIPlugin --> PlayBar[PIE Simulation Controls]

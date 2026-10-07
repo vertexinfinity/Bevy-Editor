@@ -111,6 +111,7 @@ fn setup_editor_camera(mut commands: Commands) {
         Name::new("Editor Viewport Camera"),
         Camera3d::default(),
         bevy::picking::mesh_picking::MeshPickingCamera,
+        bevy::gizmos::transform_gizmo::TransformGizmoCamera,
         Transform::from_translation(initial_pos).looking_at(target, Vec3::Y),
     ));
 }

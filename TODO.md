@@ -67,7 +67,14 @@
    - WASD + QE (Space/C) flight translation.
    - Shift sprint boost (2.5x).
    - Mouse scroll wheel adjusts flight speed smoothly.
+### 🟢 Completed Features
+1. **Industry-Standard Fly Camera**:
+   - Hold RMB to look around with mouse.
+   - WASD + QE (Space/C) flight translation.
+   - Shift sprint boost (2.5x).
+   - Mouse scroll wheel adjusts flight speed smoothly.
    - Cursor automatically unlocked on RMB release.
+   - Camera Auto-Focus (`F` key) centering on selected entity.
 2. **Interactive Menu Bar**:
    - "New Project..." (scaffolds clean standalone game).
    - "New Scene", "Open...", "Save", "Save As...".
@@ -77,38 +84,50 @@
    - Clean default view (Position, Euler Rotation in degrees, Scale).
    - Local vs. Global coordinate space toggle.
    - Interactive nudge buttons (`[-X]`, `[+X]`, `[-Y 15°]`, etc.).
-   - Debug View toggle for full engine reflection panel.
+   - Debug View toggle for full engine reflection panel (`entity_tree_panel` + `details_panel`).
    - Dockable / collapsible right sidebar (`Dock ▶` / `◀ Dock`).
 4. **Asset Browser & Viewport Drag-and-Drop**:
    - Browsing `assets/` directory with file icons.
    - Native drag-and-drop ingestion of 3D models (`.glb`/`.gltf`) and scenes (`.ron`).
+   - Folder navigation with breadcrumbs (`📁 assets/models/`) and `⬆ Up` parent directory button.
    - Click-to-spawn items into the 3D scene.
-   - Directory hover targeting for dragging files directly into folders.
+   - Automatic image decoding for embedded JPEG, WebP, KTX2 textures in glTF models.
 5. **Component Authoring**:
    - `+ Script (Lua)`, `+ Spin Animation`, `+ Velocity`, `+ Point Light`, `+ Gameplay Tag`.
-6. **3D Viewport Raycast Picking**:
+6. **3D Viewport Raycast Picking & Gizmos**:
    - Global `On<PointerClick>` with `MeshPickingCamera`.
-   - Ancestor traversal to automatically map clicked mesh children to the authorable `SceneEntity` root.
-7. **Active Context Bottom-Right Badge**:
+   - Ancestor traversal to automatically map clicked mesh children to authorable `SceneEntity` root.
+   - **Visual 3D Selection Ring**: Radiant cyan ring drawn at selected object's base.
+   - **Native Transform Gizmo Integration**: Connects `InspectorSelection` to `TransformGizmoFocus` and `TransformGizmoSettings` (Translate, Rotate, Scale).
+7. **Hierarchical Scene Tree Panel (Outliner) ([`src/ui/hierarchy.rs`](file:///D:/Repos/Bevy/Bevy-Editor/src/ui/hierarchy.rs))**:
+   - Dockable left sidebar displaying all active scene entities.
+   - Real-time entity count badge.
+   - Quick primitive spawners (`+ Cube`, `+ Sphere`, `+ Light`).
+   - Click-to-select rows with synchronized inspector view.
+8. **Active Context Bottom-Right Badge**:
    - Real-time indicator displaying the selected entity name and ID (e.g. `Active: Cube (Entity(42v0))`).
-8. **Responsive Docking System (Jackdaw-inspired)**:
-   - Dockable Inspector with responsive auto-fit (`max_width: percent(45.0)`) preventing off-screen overflow.
+9. **Responsive Docking System (Jackdaw-inspired)**:
+   - Dockable Inspector with responsive auto-fit (`max_width: percent(45.0)`).
    - Dockable Project Explorer with collapsible header and `▼`/`▲` toggle.
+   - Dockable Hierarchy Outliner with collapse button.
+10. **Remote BRP Server & MCP Controller ([`src/remote/mod.rs`](file:///D:/Repos/Bevy/Bevy-Editor/src/remote/mod.rs))**:
+    - JSON-RPC 2.0 over HTTP on loopback port `15703`.
+    - Endpoints: `editor/status`, `editor/scene_tree`, `editor/select`, `editor/spawn_primitive`, `editor/play_mode`.
+    - Bridge file polling (`assets/.mcp_bridge.json`) for live event status bar feedback.
 
 ---
 
 ### 🟡 Recommended Next Line of Items (Immediate MVP Next Steps)
-1. **Visual 3D Transform Gizmos (`bevy_gizmos`)**:
-   - Render 3D axis arrows (Red = X, Green = Y, Blue = Z) on the selected entity.
-   - Dragging gizmo handles translates/rotates/scales the object directly in the viewport.
-2. **Selection Bounding Box & Wireframe Highlight**:
-   - Draw a subtle wireframe outline or AABB bounding box gizmo around the active selection.
-3. **Hierarchical Scene Tree Panel (Outliner)**:
-   - A dockable panel showing the parent-child entity tree with search filtering and visibility toggle eye icons.
-4. **Drag-to-Assign Entity Picker in Inspector**:
-   - Allow dragging an entity from the Outliner or 3D viewport into a script reference slot.
-5. **Console / Output Log Dockable Panel**:
-   - Real-time event log capturing engine warnings, asset import events, and compilation notices.
+1. **Interactive 3D Axis Gizmo Dragging & Raycast Picking**:
+   - Verify and enhance direct viewport drag manipulation of transform handles (Red X, Green Y, Blue Z axes) with camera projection.
+2. **3D Selection Bounding Box (AABB) & Wireframe Overlay**:
+   - Draw wireframe bounding box around the active entity's mesh geometry in addition to the ground circle.
+3. **In-Editor Script Property Editor**:
+   - Expose interactive property fields in the Inspector card for `ScriptComponent` key-value pairs (`Float`, `Int`, `Bool`, `String`).
+4. **Console / Output Log Dockable Panel**:
+   - Dockable bottom panel capturing engine logs, warnings, import events, and AI bridge commands.
+5. **Drag-to-Assign Entity Reference Slot in Inspector**:
+   - Allow dragging an entity from the Outliner into a script component's `entity_refs` target slot.
 
 ---
 

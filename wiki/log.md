@@ -31,3 +31,14 @@
 ## [2026-10-07] - Enabled Complete glTF Texture Support (JPEG, WebP, KTX2, etc.)
 - **Author**: Josh Thomson <ijoshuathomson@gmail.com>
 - **Fix**: Enabled image decoding features in `Cargo.toml` (`jpeg`, `png`, `webp`, `bmp`, `tga`, `ktx2`, `dds`) allowing `.glb` files with embedded JPEG textures to parse and load into the 3D scene without errors. Documented in `wiki/risks/defects.md`.
+
+## [2026-10-07] - Wiki Registry Synchronization & 3D Bounding Box Gizmos
+- **Author**: Josh Thomson <ijoshuathomson@gmail.com>
+- **Updates**:
+  1. **Wiki Synchronization**: Indexed [`src/ui/hierarchy.rs`](file:///D:/Repos/Bevy/Bevy-Editor/src/ui/hierarchy.rs) (Scene Hierarchy panel) and [`src/ui/theme.rs`](file:///D:/Repos/Bevy/Bevy-Editor/src/ui/theme.rs) (Design Tokens) in [`wiki/operations/file-registry.md`](file:///D:/Repos/Bevy/Bevy-Editor/wiki/operations/file-registry.md) and [`wiki/overview/architecture.md`](file:///D:/Repos/Bevy/Bevy-Editor/wiki/overview/architecture.md).
+  2. **TODO.md Updated**: Marked Hierarchy Outliner, Camera Auto-Focus, and Native Transform Gizmo synchronization as complete.
+  3. **Visual 3D Selection Enhancements ([`src/core/selection.rs`](file:///D:/Repos/Bevy/Bevy-Editor/src/core/selection.rs))**:
+     - Upgraded `draw_selection_gizmo` to query `bevy::camera::primitives::Aabb`.
+     - Draws a 3D AABB wireframe box tightly enclosing the selected mesh geometry.
+     - Renders Red (X), Green (Y), and Blue (Z) 3D coordinate orientation arrows.
+     - Preserves the radiant cyan base ring on the floor plane.

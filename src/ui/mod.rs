@@ -28,6 +28,7 @@ impl Plugin for EditorUiPlugin {
             .init_resource::<inspector::InspectorState>()
             .init_resource::<asset_browser::AssetBrowserState>()
             .init_resource::<asset_browser::HoveredAssetDirectory>()
+            .init_resource::<menu::McpBridgeState>()
             // Register messages
             .add_message::<menu::MenuActionMessage>()
             .add_message::<hierarchy::ToggleHierarchyDockMessage>()
@@ -48,7 +49,6 @@ impl Plugin for EditorUiPlugin {
                 Startup,
                 (
                     menu::spawn_menu_bar,
-                    play_bar::spawn_play_bar,
                     tools_bar::spawn_tools_bar,
                     hierarchy::spawn_hierarchy_panel,
                     status_bar::spawn_status_bar,
@@ -61,6 +61,7 @@ impl Plugin for EditorUiPlugin {
                 Update,
                 (
                     menu::handle_menu_actions,
+                    menu::update_mcp_bridge_status,
                     tools_bar::update_active_tool_highlight,
                     hierarchy::update_hierarchy_list,
                     hierarchy::handle_spawn_primitives,

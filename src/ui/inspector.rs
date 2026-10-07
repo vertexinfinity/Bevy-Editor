@@ -950,15 +950,15 @@ pub fn handle_inspector_toggle_messages(
         if let Ok(mut dock_txt) = dock_label_query.single_mut() {
             dock_txt.0 = if state.is_collapsed {
                 match state.dock_zone {
-                    PanelDockZone::Right => "◀".to_string(),
-                    PanelDockZone::Left => "▶".to_string(),
-                    PanelDockZone::Floating => "⧉".to_string(),
+                    PanelDockZone::Right => "<".to_string(),
+                    PanelDockZone::Left => ">".to_string(),
+                    PanelDockZone::Floating => "[F]".to_string(),
                 }
             } else {
                 match state.dock_zone {
-                    PanelDockZone::Right => "⇲ Dock Right".to_string(),
-                    PanelDockZone::Left => "⇱ Dock Left".to_string(),
-                    PanelDockZone::Floating => "⧉ Floating".to_string(),
+                    PanelDockZone::Right => "Dock Right".to_string(),
+                    PanelDockZone::Left => "Dock Left".to_string(),
+                    PanelDockZone::Floating => "Floating".to_string(),
                 }
             };
         }
@@ -1059,6 +1059,7 @@ pub fn update_clean_transform_labels(
         Option<&Mesh3d>,
         Option<&DirectionalLight>,
         Option<&PointLight>,
+        Option<&Visibility>,
     )>,
     mut name_label: Query<&mut Text, (With<SelectedEntityLabel>, Without<PositionDisplayLabel>, Without<RotationDisplayLabel>, Without<ScaleDisplayLabel>, Without<ComponentsBadgesLabel>)>,
     mut pos_label: Query<&mut Text, (With<PositionDisplayLabel>, Without<SelectedEntityLabel>, Without<RotationDisplayLabel>, Without<ScaleDisplayLabel>, Without<ComponentsBadgesLabel>)>,
@@ -1081,13 +1082,31 @@ pub fn update_clean_transform_labels(
         return;
     };
 
-    let Ok((name, transform, global_transform, script, spin, vel, tag, mesh, dir_light, pt_light)) = entities.get(selected) else {
+    let Ok((name, transform, global_transform, script, spin, vel, tag, mesh, dir_light, pt_light, vis)) = entities.get(selected) else {
         name_txt.0 = format!("Selected: {:?} (Despawned)", selected);
         return;
     };
 
-    let name_str = name.map(|n| n.as_str()).unwrap_or("Entity");
-    name_txt.0 = format!("Selected: {} ({:?})", name_str, selected);
+    let is_hidden = vis == Some(&Visibility::Hidden);
+    let type_desc = if mesh.is_some() {
+        "Mesh Prop"
+    } else if dir_light.is_some() || pt_light.is_some() {
+        "Light"
+    } else {
+        "Entity"
+    };
+
+    let base_name = if let Some(n) = name {
+        n.as_str().to_string()
+    } else {
+        format!("{type_desc} #{}", selected.index())
+    };
+
+    name_txt.0 = if is_hidden {
+        format!("Selected: {base_name} [Hidden]")
+    } else {
+        format!("Selected: {base_name}")
+    };
 
     // Compute display position, rotation, scale
     let (pos, rot, scale) = if state.is_global_coords {

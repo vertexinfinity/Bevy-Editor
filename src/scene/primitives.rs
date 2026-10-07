@@ -32,6 +32,7 @@ pub fn spawn_starter_scene(
             ..default()
         })),
         Transform::IDENTITY,
+        bevy::picking::Pickable::IGNORE,
     ));
 
     // Center Cube
