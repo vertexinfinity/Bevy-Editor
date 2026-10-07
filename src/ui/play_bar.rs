@@ -22,15 +22,15 @@ pub fn spawn_play_bar(mut commands: Commands) {
             Name::new("PlayControlBar"),
             Node {
                 position_type: PositionType::Absolute,
-                top: px(5),
+                top: px(4),
                 left: Val::Percent(44.0),
-                height: px(28),
+                height: HEIGHT_TOOLBAR,
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
                 padding: UiRect::axes(px(4), px(2)),
                 column_gap: px(4),
                 border: UiRect::all(px(1)),
-                border_radius: BorderRadius::all(px(5)),
+                border_radius: radius_card(),
                 ..default()
             },
             BackgroundColor(BG_CARD),
@@ -75,9 +75,10 @@ fn spawn_play_button(
             EditorInternal,
             action,
             Node {
-                padding: UiRect::axes(px(10), px(3)),
+                height: HEIGHT_BTN_STANDARD,
+                padding: UiRect::axes(px(10), px(2)),
                 border: UiRect::all(px(1)),
-                border_radius: BorderRadius::all(px(4)),
+                border_radius: radius_button(),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
@@ -108,7 +109,7 @@ fn spawn_play_button(
         Pickable::IGNORE,
         Text::new(label),
         TextFont {
-            font_size: bevy::text::FontSize::Px(11.0),
+            font_size: bevy::text::FontSize::Px(FONT_SIZE_SMALL),
             ..default()
         },
         TextColor(if btn_type == PlayBtnType::Play { Color::WHITE } else { TEXT_PRIMARY }),

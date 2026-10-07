@@ -55,6 +55,47 @@ pub const TEXT_SECONDARY: Color = Color::srgb(0.58, 0.64, 0.72);
 /// Darker slate for shortcuts, badges, and disabled states
 pub const TEXT_MUTED: Color = Color::srgb(0.38, 0.44, 0.52);
 
+// --- Design System Standards (Linear / VS Code / Figma) ---
+#[inline]
+pub fn radius_panel() -> BorderRadius {
+    BorderRadius::all(Val::Px(6.0))
+}
+
+#[inline]
+pub fn radius_card() -> BorderRadius {
+    BorderRadius::all(Val::Px(5.0))
+}
+
+#[inline]
+pub fn radius_button() -> BorderRadius {
+    BorderRadius::all(Val::Px(4.0))
+}
+
+#[inline]
+pub fn radius_pill() -> BorderRadius {
+    BorderRadius::all(Val::Px(12.0))
+}
+
+// Spacing Scale
+pub const SPACE_MICRO: Val = Val::Px(4.0);
+pub const SPACE_COMPACT: Val = Val::Px(8.0);
+pub const SPACE_STANDARD: Val = Val::Px(12.0);
+pub const SPACE_SPACIOUS: Val = Val::Px(16.0);
+pub const SPACE_SECTION: Val = Val::Px(24.0);
+
+// Control Dimensions
+pub const HEIGHT_TOOLBAR: Val = Val::Px(34.0);
+pub const HEIGHT_PANEL_HEADER: Val = Val::Px(32.0);
+pub const HEIGHT_BTN_STANDARD: Val = Val::Px(26.0);
+pub const HEIGHT_BTN_COMPACT: Val = Val::Px(22.0);
+pub const HEIGHT_STATUS_BAR: Val = Val::Px(26.0);
+
+// Font Size Scale
+pub const FONT_SIZE_SMALL: f32 = 11.5;
+pub const FONT_SIZE_NORMAL: f32 = 13.0;
+pub const FONT_SIZE_SECTION: f32 = 16.0;
+pub const FONT_SIZE_TITLE: f32 = 22.0;
+
 /// Loaded font assets with rich symbol & emoji coverage
 #[derive(Resource, Clone, Debug)]
 pub struct EditorFonts {
@@ -64,7 +105,7 @@ pub struct EditorFonts {
 }
 
 impl EditorFonts {
-    /// Helper to create a TextFont with symbol font support
+    /// Helper to create a TextFont with standard editor typography
     pub fn font_size(&self, px: f32) -> TextFont {
         TextFont {
             font: self.symbol.clone().into(),
@@ -72,5 +113,22 @@ impl EditorFonts {
             ..default()
         }
     }
+
+    pub fn small(&self) -> TextFont {
+        self.font_size(FONT_SIZE_SMALL)
+    }
+
+    pub fn normal(&self) -> TextFont {
+        self.font_size(FONT_SIZE_NORMAL)
+    }
+
+    pub fn section(&self) -> TextFont {
+        self.font_size(FONT_SIZE_SECTION)
+    }
+
+    pub fn title(&self) -> TextFont {
+        self.font_size(FONT_SIZE_TITLE)
+    }
 }
+
 

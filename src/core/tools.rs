@@ -27,7 +27,7 @@ pub struct ActiveTool {
 
 impl Default for ActiveTool {
     fn default() -> Self {
-        Self { current_id: "select" }
+        Self { current_id: "translate" }
     }
 }
 

@@ -1169,12 +1169,12 @@ pub fn select_entity_on_viewport_click(
     }
 
     // Resolve clicked entity or its ancestor marked with SceneEntity
+    // Climb to the TOPMOST SceneEntity ancestor (glTF descendants are all tagged SceneEntity)
     let mut current = click.entity;
+    let mut top: Option<Entity> = None;
     loop {
         if scene_entities.contains(current) {
-            info!("Selected 3D scene object: {:?}", current);
-            selection.0 = Some(current);
-            return;
+            top = Some(current);
         }
         if let Ok(child_of) = parent_query.get(current) {
             current = child_of.parent();
@@ -1182,11 +1182,13 @@ pub fn select_entity_on_viewport_click(
             break;
         }
     }
-
-    // Fallback: if not explicitly marked SceneEntity, select entity directly if not editor internal
-    if !editor_internal.contains(click.entity) {
-        selection.0 = Some(click.entity);
+    if let Some(root) = top {
+        info!("Selected 3D scene object: {:?}", root);
+        selection.0 = Some(root);
+        return;
     }
+
+    // No fallback: bubbled clicks reach the Window entity and must never become the selection.
 }
 
 /// Updates inspector state toggles (Debug view mode, Dock collapse/expand, Local/Global coords).

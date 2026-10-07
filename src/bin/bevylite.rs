@@ -103,6 +103,7 @@ fn handle_open(args: &[String]) {
 fn handle_build(args: &[String]) {
     let mut target = "windows".to_string();
     let mut output_dir = PathBuf::from("./dist");
+    let mut project_dir = None;
 
     let mut i = 0;
     while i < args.len() {
@@ -119,6 +120,12 @@ fn handle_build(args: &[String]) {
                     i += 1;
                 }
             }
+            "--project" | "-p" => {
+                if i + 1 < args.len() {
+                    project_dir = Some(PathBuf::from(&args[i + 1]));
+                    i += 1;
+                }
+            }
             _ => {}
         }
         i += 1;
@@ -128,6 +135,7 @@ fn handle_build(args: &[String]) {
 
     let config = ExportContext {
         project_name: "BevyGame".to_string(),
+        project_dir,
         scene_path: None,
         output_dir: output_dir.clone(),
         release: true,
@@ -425,7 +433,8 @@ fn handle_mcp() {
                                     "type": "object",
                                     "properties": {
                                         "target": { "type": "string", "enum": ["windows", "android", "web", "ios"], "description": "Target platform" },
-                                        "output_dir": { "type": "string", "description": "Output directory" }
+                                        "output_dir": { "type": "string", "description": "Output directory" },
+                                        "project_dir": { "type": "string", "description": "Windows Cargo project directory containing Cargo.toml" }
                                     },
                                     "required": ["target"]
                                 }
@@ -557,8 +566,10 @@ fn handle_mcp() {
                     "bevylite_export_build" => {
                         let target = arguments.get("target").and_then(|t| t.as_str()).unwrap_or("windows");
                         let out = arguments.get("output_dir").and_then(|o| o.as_str()).map(PathBuf::from).unwrap_or_else(|| PathBuf::from("./dist"));
+                        let project_dir = arguments.get("project_dir").and_then(|p| p.as_str()).map(PathBuf::from);
                         let config = ExportContext {
                             project_name: "BevyGame".to_string(),
+                            project_dir,
                             scene_path: None,
                             output_dir: out,
                             release: true,

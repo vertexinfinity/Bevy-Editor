@@ -66,11 +66,55 @@ pub struct NavigateAssetFolderMessage(pub PathBuf);
 #[derive(Message, Clone, Copy, Debug)]
 pub struct RefreshAssetBrowserMessage;
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum AssetCategoryFilter {
+    #[default]
+    All,
+    Models,
+    Textures,
+    Scenes,
+    Scripts,
+    Audio,
+}
+
+impl AssetCategoryFilter {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::All => "All",
+            Self::Models => "Models",
+            Self::Textures => "Textures",
+            Self::Scenes => "Scenes",
+            Self::Scripts => "Scripts",
+            Self::Audio => "Audio",
+        }
+    }
+
+    pub fn matches(&self, file_name: &str, is_dir: bool) -> bool {
+        if is_dir {
+            return true;
+        }
+        let lower = file_name.to_lowercase();
+        match self {
+            Self::All => true,
+            Self::Models => lower.ends_with(".glb") || lower.ends_with(".gltf") || lower.ends_with(".obj"),
+            Self::Textures => lower.ends_with(".png") || lower.ends_with(".jpg") || lower.ends_with(".ktx2"),
+            Self::Scenes => lower.ends_with(".ron") || lower.ends_with(".bsn"),
+            Self::Scripts => lower.ends_with(".lua") || lower.ends_with(".rhai") || lower.ends_with(".rs"),
+            Self::Audio => lower.ends_with(".ogg") || lower.ends_with(".wav") || lower.ends_with(".mp3"),
+        }
+    }
+}
+
+/// Message to set the active asset category filter.
+#[derive(Message, Clone, Copy, Debug)]
+pub struct SetAssetFilterMessage(pub AssetCategoryFilter);
+
 /// State for the Project Explorer dock.
 #[derive(Resource, Debug, Clone)]
 pub struct AssetBrowserState {
     pub is_collapsed: bool,
     pub current_dir: PathBuf,
+    pub active_filter: AssetCategoryFilter,
 }
 
 impl Default for AssetBrowserState {
@@ -78,11 +122,12 @@ impl Default for AssetBrowserState {
         Self {
             is_collapsed: false,
             current_dir: PathBuf::from("assets"),
+            active_filter: AssetCategoryFilter::All,
         }
     }
 }
 
-pub fn spawn_asset_browser(mut commands: Commands) {
+pub fn spawn_asset_browser(mut commands: Commands, state: Res<AssetBrowserState>) {
     let browser_root = commands
         .spawn((
             EditorInternal,
@@ -92,12 +137,12 @@ pub fn spawn_asset_browser(mut commands: Commands) {
                 position_type: PositionType::Absolute,
                 left: px(255), // offset cleanly from hierarchy dock
                 bottom: px(34), // above bottom status bar
-                width: px(380),
-                max_width: percent(45.0),
+                width: px(440),
+                max_width: percent(50.0),
                 height: px(250),
                 max_height: percent(50.0),
                 border: UiRect::all(px(1)),
-                border_radius: BorderRadius::all(px(6)),
+                border_radius: radius_panel(),
                 flex_direction: FlexDirection::Column,
                 overflow: Overflow::clip(),
                 ..default()
@@ -107,7 +152,7 @@ pub fn spawn_asset_browser(mut commands: Commands) {
         ))
         .id();
 
-    // Explorer Header (Draggable / Dockable styling)
+    // 1. Explorer Header (Draggable / Dockable styling)
     let header = commands
         .spawn((
             EditorInternal,
@@ -147,6 +192,7 @@ pub fn spawn_asset_browser(mut commands: Commands) {
         Text::new("📁 assets/"),
         TextFont {
             font_size: bevy::text::FontSize::Px(12.0),
+            weight: FontWeight::SEMIBOLD,
             ..default()
         },
         TextColor(TEXT_PRIMARY),
@@ -174,7 +220,7 @@ pub fn spawn_asset_browser(mut commands: Commands) {
             Node {
                 padding: UiRect::axes(px(6), px(2)),
                 border: UiRect::all(px(1)),
-                border_radius: BorderRadius::all(px(3)),
+                border_radius: radius_button(),
                 ..default()
             },
             BackgroundColor(BG_INPUT),
@@ -205,7 +251,7 @@ pub fn spawn_asset_browser(mut commands: Commands) {
     commands.spawn((
         EditorInternal,
         Pickable::IGNORE,
-        Text::new("^ Up"),
+        Text::new("▲ Up"),
         TextFont {
             font_size: bevy::text::FontSize::Px(10.5),
             ..default()
@@ -221,7 +267,7 @@ pub fn spawn_asset_browser(mut commands: Commands) {
             Node {
                 padding: UiRect::axes(px(6), px(2)),
                 border: UiRect::all(px(1)),
-                border_radius: BorderRadius::all(px(3)),
+                border_radius: radius_button(),
                 ..default()
             },
             BackgroundColor(BG_INPUT),
@@ -248,7 +294,7 @@ pub fn spawn_asset_browser(mut commands: Commands) {
     commands.spawn((
         EditorInternal,
         Pickable::IGNORE,
-        Text::new("Sync"),
+        Text::new("↻ Sync"),
         TextFont {
             font_size: bevy::text::FontSize::Px(10.5),
             ..default()
@@ -256,6 +302,82 @@ pub fn spawn_asset_browser(mut commands: Commands) {
         TextColor(TEXT_SECONDARY),
         ChildOf(refresh_btn),
     ));
+
+    // 2. Filter Bar: Filter tabs (All, Models, Textures, Scenes, Scripts, Audio)
+    let filter_bar = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                height: px(28),
+                padding: UiRect::axes(px(6), px(2)),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: px(4),
+                border: UiRect::bottom(px(1)),
+                ..default()
+            },
+            BackgroundColor(BG_INPUT),
+            BorderColor::all(BORDER_SUBTLE),
+            ChildOf(browser_root),
+        ))
+        .id();
+
+    for filter in [
+        AssetCategoryFilter::All,
+        AssetCategoryFilter::Models,
+        AssetCategoryFilter::Textures,
+        AssetCategoryFilter::Scenes,
+        AssetCategoryFilter::Scripts,
+        AssetCategoryFilter::Audio,
+    ] {
+        let is_active = state.active_filter == filter;
+        let tab_btn = commands
+            .spawn((
+                EditorInternal,
+                Node {
+                    padding: UiRect::axes(px(6), px(2)),
+                    border_radius: radius_button(),
+                    border: UiRect::all(px(1)),
+                    ..default()
+                },
+                BackgroundColor(if is_active { ACCENT_CYAN_DIM } else { BG_CARD }),
+                BorderColor::all(if is_active { BORDER_ACCENT } else { BORDER_SUBTLE }),
+                ChildOf(filter_bar),
+            ))
+            .observe(move |trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+                if !is_active {
+                    if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                        *bg = BackgroundColor(BG_HOVER);
+                    }
+                }
+            })
+            .observe(move |trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+                if !is_active {
+                    if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                        *bg = BackgroundColor(BG_CARD);
+                    }
+                }
+            })
+            .observe(move |click: On<PointerClick>, mut writer: MessageWriter<SetAssetFilterMessage>| {
+                if click.button == PointerButton::Primary {
+                    writer.write(SetAssetFilterMessage(filter));
+                }
+            })
+            .id();
+
+        commands.spawn((
+            EditorInternal,
+            Pickable::IGNORE,
+            Text::new(filter.label()),
+            TextFont {
+                font_size: bevy::text::FontSize::Px(10.0),
+                weight: if is_active { FontWeight::SEMIBOLD } else { FontWeight::NORMAL },
+                ..default()
+            },
+            TextColor(if is_active { ACCENT_CYAN } else { TEXT_SECONDARY }),
+            ChildOf(tab_btn),
+        ));
+    }
 
     // Collapse / Dock Toggle Button
     let collapse_btn = commands
@@ -319,10 +441,15 @@ pub fn spawn_asset_browser(mut commands: Commands) {
         .id();
 
     // Populate initial file list from assets/
-    populate_asset_list(&mut commands, list_container, Path::new("assets"));
+    populate_asset_list(&mut commands, list_container, Path::new("assets"), state.active_filter);
 }
 
-fn populate_asset_list(commands: &mut Commands, parent: Entity, current_dir: &Path) {
+fn populate_asset_list(
+    commands: &mut Commands,
+    parent: Entity,
+    current_dir: &Path,
+    filter: AssetCategoryFilter,
+) {
     let mut entries = Vec::new();
 
     if let Ok(read_dir) = fs::read_dir(current_dir) {
@@ -330,7 +457,11 @@ fn populate_asset_list(commands: &mut Commands, parent: Entity, current_dir: &Pa
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
             let is_dir = path.is_dir();
-            entries.push((path, name, is_dir));
+
+            // Filter check
+            if filter.matches(&name, is_dir) {
+                entries.push((path, name, is_dir));
+            }
         }
     }
 
@@ -345,7 +476,7 @@ fn populate_asset_list(commands: &mut Commands, parent: Entity, current_dir: &Pa
         commands.spawn((
             EditorInternal,
             Pickable::IGNORE,
-            Text::new("Folder is empty - Drag .glb/.gltf here to import"),
+            Text::new("No matching assets in this folder"),
             TextFont {
                 font_size: bevy::text::FontSize::Px(11.0),
                 ..default()
@@ -358,18 +489,22 @@ fn populate_asset_list(commands: &mut Commands, parent: Entity, current_dir: &Pa
 
     for (path, name, is_dir) in entries {
         let icon = if is_dir {
-            "[DIR]"
+            "📁"
         } else if name.ends_with(".glb") || name.ends_with(".gltf") {
-            "[3D]"
+            "🧊"
         } else if name.ends_with(".ron") || name.ends_with(".bsn") {
-            "[SCN]"
+            "🎬"
         } else if name.ends_with(".png") || name.ends_with(".jpg") {
-            "[IMG]"
+            "🖼"
+        } else if name.ends_with(".lua") || name.ends_with(".rhai") || name.ends_with(".rs") {
+            "📜"
+        } else if name.ends_with(".ogg") || name.ends_with(".wav") {
+            "🔊"
         } else {
-            "[FILE]"
+            "📄"
         };
 
-        let label = if is_dir { format!("{icon} {name}/") } else { format!("{icon} {name}") };
+        let label = if is_dir { format!("{icon}  {name}/") } else { format!("{icon}  {name}") };
         let row_path = path.clone();
         let hover_dir_path = if is_dir { path.clone() } else { current_dir.to_path_buf() };
 
@@ -382,8 +517,8 @@ fn populate_asset_list(commands: &mut Commands, parent: Entity, current_dir: &Pa
                     is_dir,
                 },
                 Node {
-                    padding: UiRect::axes(px(6), px(3)),
-                    border_radius: BorderRadius::all(px(3)),
+                    padding: UiRect::axes(px(8), px(3)),
+                    border_radius: radius_button(),
                     border: UiRect::all(px(1)),
                     align_items: AlignItems::Center,
                     ..default()
@@ -432,10 +567,11 @@ fn populate_asset_list(commands: &mut Commands, parent: Entity, current_dir: &Pa
     }
 }
 
-/// Handles toggling Project Explorer dock collapse, folder navigation, and refresh requests.
+/// Handles toggling Project Explorer dock collapse, folder navigation, filter changes, and refresh requests.
 pub fn handle_explorer_dock_and_refresh(
     mut toggle_msgs: MessageReader<ToggleExplorerDockMessage>,
     mut refresh_msgs: MessageReader<RefreshAssetBrowserMessage>,
+    mut filter_msgs: MessageReader<SetAssetFilterMessage>,
     mut nav_msgs: MessageReader<NavigateAssetFolderMessage>,
     mut state: ResMut<AssetBrowserState>,
     mut dock_query: Query<&mut Node, With<ProjectExplorerDockRoot>>,
@@ -453,6 +589,11 @@ pub fn handle_explorer_dock_and_refresh(
     }
 
     for _ in refresh_msgs.read() {
+        should_refresh = true;
+    }
+
+    for filter_msg in filter_msgs.read() {
+        state.active_filter = filter_msg.0;
         should_refresh = true;
     }
 
@@ -496,7 +637,7 @@ pub fn handle_explorer_dock_and_refresh(
                     commands.entity(child).despawn();
                 }
             }
-            populate_asset_list(&mut commands, list_entity, &state.current_dir);
+            populate_asset_list(&mut commands, list_entity, &state.current_dir, state.active_filter);
         }
     }
 }

@@ -1,3 +1,7 @@
 target/
 **/*.rs.bk
 *.pdb
+wiki/
+temp_mcp_game/
+*.tmp
+*.temp

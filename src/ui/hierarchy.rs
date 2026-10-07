@@ -22,6 +22,9 @@ pub struct HierarchyState {
     pub width: f32,
     #[allow(dead_code)]
     pub filter: String,
+    /// True only while the user has clicked into the search box.
+    pub search_focused: bool,
+    pub search_hovered: bool,
 }
 
 impl Default for HierarchyState {
@@ -30,6 +33,8 @@ impl Default for HierarchyState {
             is_collapsed: false,
             width: 250.0,
             filter: String::new(),
+            search_focused: false,
+            search_hovered: false,
         }
     }
 }
@@ -70,6 +75,9 @@ pub enum SpawnPrimitiveKind {
     Sphere,
     Light,
     Empty,
+    Delete,
+    Duplicate,
+    Unparent,
 }
 
 #[derive(Message, Clone, Copy, Debug)]
@@ -236,6 +244,8 @@ pub fn spawn_hierarchy_panel(mut commands: Commands) {
             BorderColor::all(BORDER_SUBTLE),
             ChildOf(dock_root),
         ))
+        .observe(|_: On<PointerOver>, mut s: ResMut<HierarchyState>| s.search_hovered = true)
+        .observe(|_: On<PointerOut>, mut s: ResMut<HierarchyState>| s.search_hovered = false)
         .id();
 
     // Search Icon badge
@@ -290,6 +300,9 @@ pub fn spawn_hierarchy_panel(mut commands: Commands) {
     spawn_primitive_btn(&mut commands, actions_row, "+Sphere", SpawnPrimitiveKind::Sphere);
     spawn_primitive_btn(&mut commands, actions_row, "+Light", SpawnPrimitiveKind::Light);
     spawn_primitive_btn(&mut commands, actions_row, "+Empty", SpawnPrimitiveKind::Empty);
+    spawn_primitive_btn(&mut commands, actions_row, "Dup", SpawnPrimitiveKind::Duplicate);
+    spawn_primitive_btn(&mut commands, actions_row, "Del", SpawnPrimitiveKind::Delete);
+    spawn_primitive_btn(&mut commands, actions_row, "Unparent", SpawnPrimitiveKind::Unparent);
 
     // 4. Entity List Container
     commands.spawn((
@@ -389,14 +402,20 @@ pub fn update_hierarchy_list(
         Option<&crate::scene::components::ScriptComponent>,
         Option<&crate::scene::components::GameplayTag>,
         Option<&Visibility>,
+        Option<&ChildOf>,
     ), With<SceneEntity>>,
+    scene_entities: Query<(), With<SceneEntity>>,
     selection: Res<InspectorSelection>,
     state: Res<HierarchyState>,
     mut count_label_query: Query<&mut Text, (With<HierarchyCountLabel>, Without<HierarchySearchText>)>,
     list_container_query: Query<Entity, With<HierarchyListContainer>>,
     existing_rows: Query<Entity, With<HierarchyEntityRow>>,
+    _visibility_query: Query<&Visibility>,
+    vis_changed: Query<(), (With<SceneEntity>, Changed<Visibility>)>,
+    added: Query<(), Added<SceneEntity>>,
+    mut removed: RemovedComponents<SceneEntity>,
+    mut first: Local<bool>,
 ) {
-    // Only rebuild if entity counts, filter, or selection change
     let count = entities_query.iter().count();
     if let Ok(mut count_text) = count_label_query.single_mut() {
         count_text.0 = format!("{}", count);
@@ -406,20 +425,34 @@ pub fn update_hierarchy_list(
         return;
     };
 
-    // Check if we need to refresh list
-    if !selection.is_changed() && !state.is_changed() && existing_rows.iter().count() == count {
+    let removed_any = removed.read().count() > 0;
+    if *first
+        && !selection.is_changed()
+        && !state.is_changed()
+        && vis_changed.is_empty()
+        && added.is_empty()
+        && !removed_any
+    {
         return;
     }
+    *first = true;
 
     // Clear existing rows and section headers
     for row in &existing_rows {
         commands.entity(row).despawn();
     }
 
-    // Classify entities into categories
+    // Classify entities into categories - only show root level entities to prevent lag
     let mut items: Vec<(HierarchyCategory, Entity, String, &'static str, bool, bool)> = Vec::new();
 
-    for (entity, name, dir_light, point_light, mesh, script, gameplay_tag, vis) in &entities_query {
+    for (entity, name, dir_light, point_light, mesh, script, gameplay_tag, vis, child_of) in &entities_query {
+        // Skip child entities if parent is also a SceneEntity (keep collapsed to root)
+        if let Some(child) = child_of {
+            if scene_entities.contains(child.parent()) {
+                continue;
+            }
+        }
+
         let is_hidden = vis == Some(&Visibility::Hidden);
         let name_str = name.map(|n| n.as_str()).unwrap_or("Entity").to_string();
         let is_selected = selection.0 == Some(entity);
@@ -614,13 +647,36 @@ pub fn update_hierarchy_list(
                 BackgroundColor(if is_hidden { BG_INPUT } else { ACCENT_CYAN_DIM }),
                 ChildOf(right_group),
             ))
-            .observe(move |mut click: On<PointerClick>, mut vis_query: Query<&mut Visibility>, mut commands: Commands| {
+            .observe(move |mut click: On<PointerClick>,
+                           mut vis_query: Query<&mut Visibility>,
+                           children_query: Query<&Children>,
+                           mut commands: Commands| {
                 if click.button == PointerButton::Primary {
                     click.propagate(false);
-                    if let Ok(mut v) = vis_query.get_mut(entity) {
-                        *v = if *v == Visibility::Hidden { Visibility::Inherited } else { Visibility::Hidden };
+                    let new_vis = if let Ok(v) = vis_query.get(entity) {
+                        if *v == Visibility::Hidden { Visibility::Inherited } else { Visibility::Hidden }
                     } else {
-                        commands.entity(entity).insert(Visibility::Hidden);
+                        Visibility::Hidden
+                    };
+
+                    // Apply to entity
+                    if let Ok(mut v) = vis_query.get_mut(entity) {
+                        *v = new_vis;
+                    } else {
+                        commands.entity(entity).insert(new_vis);
+                    }
+
+                    // Recursively apply to children
+                    let mut stack = vec![entity];
+                    while let Some(current) = stack.pop() {
+                        if let Ok(children) = children_query.get(current) {
+                            for child in children.iter() {
+                                if let Ok(mut v) = vis_query.get_mut(child) {
+                                    *v = new_vis;
+                                }
+                                stack.push(child);
+                            }
+                        }
                     }
                 }
             })
@@ -742,6 +798,25 @@ pub fn handle_spawn_primitives(
                 world.resource_mut::<InspectorSelection>().0 = Some(entity);
                 info!("Spawned Empty Entity: {:?}", entity);
             }
+            SpawnPrimitiveKind::Delete => {
+                if let Some(e) = world.resource::<InspectorSelection>().0 {
+                    if let Ok(ent) = world.get_entity_mut(e) {
+                        ent.despawn();
+                    }
+                    world.resource_mut::<InspectorSelection>().0 = None;
+                }
+            }
+            SpawnPrimitiveKind::Duplicate => {
+                if let Some(e) = world.resource::<InspectorSelection>().0 {
+                    let new_e = world.entity_mut(e).clone_and_spawn();
+                    world.resource_mut::<InspectorSelection>().0 = Some(new_e);
+                }
+            }
+            SpawnPrimitiveKind::Unparent => {
+                if let Some(e) = world.resource::<InspectorSelection>().0 {
+                    world.entity_mut(e).remove::<ChildOf>();
+                }
+            }
         }
     }
 }
@@ -788,11 +863,24 @@ pub fn handle_hierarchy_collapse(
 /// Handles keyboard input when searching in the hierarchy.
 pub fn handle_hierarchy_search_input(
     keyboard_input: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
     mut char_events: MessageReader<bevy::input::keyboard::KeyboardInput>,
     mut state: ResMut<HierarchyState>,
     mut search_query: Query<&mut Text, With<HierarchySearchText>>,
 ) {
-    if state.is_collapsed {
+    // Focus handling: click inside search row = focus, click anywhere else = blur
+    if mouse.just_pressed(MouseButton::Left) || mouse.just_pressed(MouseButton::Right) {
+        let want = state.search_hovered && mouse.just_pressed(MouseButton::Left);
+        if state.search_focused != want {
+            state.search_focused = want;
+        }
+    }
+    if state.search_focused && keyboard_input.just_pressed(KeyCode::Enter) {
+        state.search_focused = false;
+    }
+
+    if state.is_collapsed || !state.search_focused {
+        char_events.clear();
         return;
     }
 

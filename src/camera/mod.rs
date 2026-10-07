@@ -52,7 +52,31 @@ pub struct EditorCameraPlugin;
 impl Plugin for EditorCameraPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup_editor_camera)
-            .add_systems(Update, (update_fly_camera, handle_camera_focus_shortcut));
+            .add_systems(Update, screenshot_on_f12)
+            .add_observer(|c: On<bevy::picking::events::PointerClick>| {
+                info!("[debug] PointerClick on entity {:?} button {:?}", c.entity, c.button);
+            })
+            .add_systems(
+                Update,
+                (update_fly_camera, handle_camera_focus_shortcut)
+                    .run_if(in_state(crate::ui::EditorAppState::InEditor)),
+            );
+    }
+}
+
+/// Press F12 to save `screenshots/shot_<n>.png` (used for remote UI debugging).
+fn screenshot_on_f12(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut commands: Commands,
+    mut counter: Local<u32>,
+) {
+    if keys.just_pressed(KeyCode::F12) {
+        let _ = std::fs::create_dir_all("screenshots");
+        let path = format!("screenshots/shot_{}.png", *counter);
+        *counter += 1;
+        commands
+            .spawn(bevy::render::view::screenshot::Screenshot::primary_window())
+            .observe(bevy::render::view::screenshot::save_to_disk(path));
     }
 }
 

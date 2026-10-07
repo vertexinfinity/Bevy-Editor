@@ -16,20 +16,137 @@ use crate::ui::theme::*;
 #[derive(Component)]
 pub struct ToolBtnMarker(pub &'static str);
 
+#[derive(Component)]
+pub struct ViewportTabMarker(pub &'static str);
+
+#[derive(Component)]
+pub struct ViewportOverlayMarker(pub &'static str);
+
 pub fn spawn_tools_bar(mut commands: Commands, registry: Res<ToolRegistry>) {
+    // 1. Sleek Scene / Game Tab Bar at upper left of viewport
+    let tabs_root = commands
+        .spawn((
+            EditorInternal,
+            Name::new("ViewportTabBar"),
+            Node {
+                position_type: PositionType::Absolute,
+                top: px(44),
+                left: px(256), // offset from hierarchy dock
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                padding: UiRect::axes(px(4), px(2)),
+                column_gap: px(4),
+                border: UiRect::all(px(1)),
+                border_radius: radius_card(),
+                ..default()
+            },
+            BackgroundColor(BG_SHELL),
+            BorderColor::all(BORDER_SUBTLE),
+        ))
+        .id();
+
+    // Scene Tab (Active by default)
+    let scene_tab = commands
+        .spawn((
+            EditorInternal,
+            ViewportTabMarker("Scene"),
+            Node {
+                padding: UiRect::axes(px(10), px(3)),
+                border_radius: radius_button(),
+                ..default()
+            },
+            BackgroundColor(BG_CARD),
+            BorderColor::all(BORDER_ACCENT),
+            ChildOf(tabs_root),
+        ))
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new("Scene"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(11.0),
+            weight: FontWeight::SEMIBOLD,
+            ..default()
+        },
+        TextColor(ACCENT_CYAN),
+        ChildOf(scene_tab),
+    ));
+
+    // Game Tab
+    let game_tab = commands
+        .spawn((
+            EditorInternal,
+            ViewportTabMarker("Game"),
+            Node {
+                padding: UiRect::axes(px(10), px(3)),
+                border_radius: radius_button(),
+                ..default()
+            },
+            BackgroundColor(BG_SHELL),
+            ChildOf(tabs_root),
+        ))
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new("Game"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(11.0),
+            ..default()
+        },
+        TextColor(TEXT_MUTED),
+        ChildOf(game_tab),
+    ));
+
+    // Viewport Quick Toggles (Grid, Lighting, Stats)
+    for (label, active) in [("Grid: On", true), ("Light: On", true), ("Stats", false)] {
+        let chip = commands
+            .spawn((
+                EditorInternal,
+                ViewportOverlayMarker(label),
+                Node {
+                    padding: UiRect::axes(px(6), px(2)),
+                    border_radius: radius_button(),
+                    border: UiRect::all(px(1)),
+                    margin: UiRect::left(px(4)),
+                    ..default()
+                },
+                BackgroundColor(if active { ACCENT_CYAN_DIM } else { BG_INPUT }),
+                BorderColor::all(if active { BORDER_ACCENT } else { BORDER_SUBTLE }),
+                ChildOf(tabs_root),
+            ))
+            .id();
+
+        commands.spawn((
+            EditorInternal,
+            Pickable::IGNORE,
+            Text::new(label),
+            TextFont {
+                font_size: bevy::text::FontSize::Px(9.5),
+                ..default()
+            },
+            TextColor(if active { ACCENT_CYAN } else { TEXT_SECONDARY }),
+            ChildOf(chip),
+        ));
+    }
+
+    // 2. Vertical Transform Tools Bar (Select, Move, Rotate, Scale)
     let bar_root = commands
         .spawn((
             EditorInternal,
             Name::new("ViewportToolsBar"),
             Node {
                 position_type: PositionType::Absolute,
-                top: px(48),
-                left: px(262), // Cleanly offset from hierarchy panel
+                top: px(82),
+                left: px(256), // Cleanly offset from hierarchy panel
                 flex_direction: FlexDirection::Column,
-                padding: UiRect::all(px(4)),
-                row_gap: px(4),
+                padding: UiRect::all(SPACE_MICRO),
+                row_gap: SPACE_MICRO,
                 border: UiRect::all(px(1)),
-                border_radius: BorderRadius::all(px(6)),
+                border_radius: radius_panel(),
                 ..default()
             },
             BackgroundColor(BG_CARD),
@@ -46,10 +163,10 @@ pub fn spawn_tools_bar(mut commands: Commands, registry: Res<ToolRegistry>) {
                 EditorInternal,
                 ToolBtnMarker(id),
                 Node {
-                    width: px(32),
-                    height: px(32),
+                    width: px(30),
+                    height: px(30),
                     border: UiRect::all(px(1)),
-                    border_radius: BorderRadius::all(px(4)),
+                    border_radius: radius_button(),
                     justify_content: JustifyContent::Center,
                     align_items: AlignItems::Center,
                     ..default()

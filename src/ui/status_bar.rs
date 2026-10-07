@@ -11,6 +11,9 @@ pub struct StatusText;
 #[derive(Component)]
 pub struct ActiveContextChip;
 
+#[derive(Component)]
+pub struct FpsCounterLabel;
+
 pub fn spawn_status_bar(mut commands: Commands) {
     let bar_root = commands
         .spawn((
@@ -55,7 +58,7 @@ pub fn spawn_status_bar(mut commands: Commands) {
         Node {
             width: px(7),
             height: px(7),
-            border_radius: BorderRadius::all(px(4)),
+            border_radius: radius_pill(),
             ..default()
         },
         BackgroundColor(ACCENT_CYAN),
@@ -66,7 +69,7 @@ pub fn spawn_status_bar(mut commands: Commands) {
     commands.spawn((
         EditorInternal,
         StatusText,
-        Text::new("Editor Ready | Fly Cam: WASD + Hold RMB | Speed: Scroll Wheel"),
+        Text::new("Ready | Fly Cam: WASD + Hold RMB | Speed: Scroll Wheel"),
         TextFont {
             font_size: bevy::text::FontSize::Px(11.0),
             ..default()
@@ -75,14 +78,14 @@ pub fn spawn_status_bar(mut commands: Commands) {
         ChildOf(left_container),
     ));
 
-    // Right container: Active context badge + Engine info
+    // Right container: FPS badge + Active context badge + Engine info
     let right_container = commands
         .spawn((
             EditorInternal,
             Node {
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                column_gap: px(12),
+                column_gap: px(10),
                 padding: UiRect::right(px(8)),
                 ..default()
             },
@@ -90,13 +93,43 @@ pub fn spawn_status_bar(mut commands: Commands) {
         ))
         .id();
 
+    // FPS diagnostic chip
+    let fps_chip = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                padding: UiRect::axes(px(6), px(2)),
+                border_radius: radius_button(),
+                border: UiRect::all(px(1)),
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(BG_CARD),
+            BorderColor::all(BORDER_SUBTLE),
+            ChildOf(right_container),
+        ))
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        FpsCounterLabel,
+        Text::new("60 FPS"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(10.0),
+            weight: FontWeight::MEDIUM,
+            ..default()
+        },
+        TextColor(ACCENT_CYAN),
+        ChildOf(fps_chip),
+    ));
+
     // Active Context Badge (bottom right)
     let chip = commands
         .spawn((
             EditorInternal,
             Node {
                 padding: UiRect::axes(px(8), px(2)),
-                border_radius: BorderRadius::all(px(3)),
+                border_radius: radius_button(),
                 border: UiRect::all(px(1)),
                 align_items: AlignItems::Center,
                 ..default()
@@ -124,7 +157,7 @@ pub fn spawn_status_bar(mut commands: Commands) {
         EditorInternal,
         Text::new("Bevy 0.20-dev | Rust 2024"),
         TextFont {
-            font_size: bevy::text::FontSize::Px(11.0),
+            font_size: bevy::text::FontSize::Px(10.5),
             ..default()
         },
         TextColor(TEXT_MUTED),
@@ -133,17 +166,28 @@ pub fn spawn_status_bar(mut commands: Commands) {
 }
 
 pub fn update_status_bar(
+    time: Res<Time>,
     export_status: Res<ExportStatus>,
     selection: Res<InspectorSelection>,
     name_query: Query<Option<&Name>>,
-    mut text_query: Query<&mut Text, (With<StatusText>, Without<ActiveContextChip>)>,
-    mut chip_query: Query<&mut Text, (With<ActiveContextChip>, Without<StatusText>)>,
+    mut text_query: Query<&mut Text, (With<StatusText>, Without<ActiveContextChip>, Without<FpsCounterLabel>)>,
+    mut chip_query: Query<&mut Text, (With<ActiveContextChip>, Without<StatusText>, Without<FpsCounterLabel>)>,
+    mut fps_query: Query<&mut Text, (With<FpsCounterLabel>, Without<StatusText>, Without<ActiveContextChip>)>,
 ) {
+    // Smooth FPS calculation
+    if let Ok(mut fps_text) = fps_query.single_mut() {
+        let delta = time.delta_secs();
+        if delta > 0.0001 {
+            let fps = (1.0 / delta).round() as u32;
+            fps_text.0 = format!("{fps} FPS");
+        }
+    }
+
     if export_status.is_changed() {
         if let Ok(mut text) = text_query.single_mut() {
             match export_status.as_ref() {
                 ExportStatus::Idle => {
-                    text.0 = "Editor Ready | Fly Cam: WASD + Hold RMB | Speed: Scroll Wheel".to_string();
+                    text.0 = "Ready | Fly Cam: WASD + Hold RMB | Speed: Scroll Wheel".to_string();
                 }
                 ExportStatus::InProgress { target, progress } => {
                     text.0 = format!("Exporting {target}: {progress}");

@@ -23,6 +23,17 @@ impl Exporter for WindowsExporter {
     fn export(&self, ctx: &ExportContext) -> Result<ExportResult, String> {
         let export_dir = ctx.output_dir.join("windows");
         fs::create_dir_all(&export_dir).map_err(|e| format!("Failed to create export directory: {e}"))?;
+        let export_dir = export_dir.canonicalize()
+            .map_err(|e| format!("Failed to resolve export directory: {e}"))?;
+
+        let project_dir = ctx.project_dir.as_ref()
+            .ok_or_else(|| "Select a Cargo project to build".to_string())?;
+        let project_dir = project_dir.canonicalize()
+            .map_err(|e| format!("Failed to resolve project directory: {e}"))?;
+        let manifest_path = project_dir.join("Cargo.toml");
+        if !manifest_path.is_file() {
+            return Err(format!("No Cargo.toml found in {}", project_dir.display()));
+        }
 
         let assets_dir = export_dir.join("assets");
         fs::create_dir_all(&assets_dir).map_err(|e| format!("Failed to create assets directory: {e}"))?;
@@ -35,8 +46,13 @@ impl Exporter for WindowsExporter {
             }
         }
 
+        let target_dir = export_dir.join("target");
         let mut cmd = Command::new("cargo");
-        cmd.args(["build"]);
+        cmd.current_dir(&project_dir)
+            .args(["build", "--manifest-path"])
+            .arg(&manifest_path)
+            .arg("--target-dir")
+            .arg(&target_dir);
         if ctx.release {
             cmd.arg("--release");
         }
@@ -48,8 +64,8 @@ impl Exporter for WindowsExporter {
         }
 
         Ok(ExportResult {
-            primary_artifact: export_dir.clone(),
-            message: format!("Windows executable package built at {:?}", export_dir),
+            primary_artifact: target_dir.join(if ctx.release { "release" } else { "debug" }),
+            message: format!("Windows project build completed in {}", target_dir.display()),
         })
     }
 }
