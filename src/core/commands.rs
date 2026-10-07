@@ -112,14 +112,19 @@ impl EditorCommand for MoveEntityCommand {
 }
 
 /// System listening for Ctrl+Z (Undo) and Ctrl+Y / Ctrl+Shift+Z (Redo) shortcuts.
-pub fn handle_undo_redo_shortcuts(
-    keys: Res<ButtonInput<KeyCode>>,
-    world: &mut World,
-) {
-    let ctrl = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
-    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+pub fn handle_undo_redo_shortcuts(world: &mut World) {
+    let (ctrl, shift, z_pressed, y_pressed) = {
+        let Some(keys) = world.get_resource::<ButtonInput<KeyCode>>() else {
+            return;
+        };
+        let ctrl = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
+        let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+        let z_pressed = keys.just_pressed(KeyCode::KeyZ);
+        let y_pressed = keys.just_pressed(KeyCode::KeyY);
+        (ctrl, shift, z_pressed, y_pressed)
+    };
 
-    if ctrl && keys.just_pressed(KeyCode::KeyZ) {
+    if ctrl && z_pressed {
         if shift {
             world.resource_scope(|w, mut hist: Mut<CommandHistory>| {
                 let _ = hist.redo(w);
@@ -129,7 +134,7 @@ pub fn handle_undo_redo_shortcuts(
                 let _ = hist.undo(w);
             });
         }
-    } else if ctrl && keys.just_pressed(KeyCode::KeyY) {
+    } else if ctrl && y_pressed {
         world.resource_scope(|w, mut hist: Mut<CommandHistory>| {
             let _ = hist.redo(w);
         });

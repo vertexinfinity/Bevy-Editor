@@ -312,7 +312,7 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
 
     // Spawn Feathers split pane inside debug root
     let feathers_scene = bsn! {
-        FeathersSplitPane
+        @FeathersSplitPane
         Node {
             width: percent(100),
             height: percent(100),
