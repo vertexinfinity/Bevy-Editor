@@ -129,6 +129,8 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
                 right: px(0),
                 bottom: px(28),
                 width: px(400),
+                max_width: percent(45.0),
+                min_width: px(40),
                 border: UiRect::left(px(1)),
                 flex_direction: FlexDirection::Column,
                 overflow: Overflow::clip(),

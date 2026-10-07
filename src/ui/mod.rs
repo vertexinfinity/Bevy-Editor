@@ -23,9 +23,13 @@ impl Plugin for EditorUiPlugin {
 
         app.insert_resource(UiTheme(create_dark_theme()))
             .init_resource::<inspector::InspectorState>()
+            .init_resource::<asset_browser::AssetBrowserState>()
+            .init_resource::<asset_browser::HoveredAssetDirectory>()
             // Register messages
             .add_message::<menu::MenuActionMessage>()
             .add_message::<asset_browser::SpawnAssetMessage>()
+            .add_message::<asset_browser::ToggleExplorerDockMessage>()
+            .add_message::<asset_browser::RefreshAssetBrowserMessage>()
             .add_message::<inspector::ToggleDebugModeMessage>()
             .add_message::<inspector::ToggleDockMessage>()
             .add_message::<inspector::ToggleCoordModeMessage>()
@@ -53,6 +57,7 @@ impl Plugin for EditorUiPlugin {
                     tools_bar::update_active_tool_highlight,
                     status_bar::update_status_bar,
                     asset_browser::handle_spawn_asset_messages,
+                    asset_browser::handle_explorer_dock_and_refresh,
                     inspector::handle_inspector_toggle_messages,
                     inspector::handle_transform_nudges,
                     inspector::handle_add_component_actions,
