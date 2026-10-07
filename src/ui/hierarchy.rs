@@ -54,6 +54,9 @@ pub struct HierarchyCountLabel;
 pub struct HierarchyCollapseBtnLabel;
 
 #[derive(Component)]
+pub struct HierarchySearchText;
+
+#[derive(Component)]
 #[allow(dead_code)]
 pub struct HierarchyEntityRow(pub Entity);
 
@@ -215,7 +218,54 @@ pub fn spawn_hierarchy_panel(mut commands: Commands) {
         ChildOf(collapse_btn),
     ));
 
-    // 2. Action Bar: Spawn Primitives Quick Buttons
+    // 2. Search / Filter Input Row
+    let search_row = commands
+        .spawn((
+            EditorInternal,
+            HierarchyActionsRow,
+            Node {
+                height: px(30),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                padding: UiRect::axes(px(8), px(2)),
+                column_gap: px(6),
+                border: UiRect::bottom(px(1)),
+                ..default()
+            },
+            BackgroundColor(BG_INPUT),
+            BorderColor::all(BORDER_SUBTLE),
+            ChildOf(dock_root),
+        ))
+        .id();
+
+    // Search Icon badge
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new("🔍"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(10.0),
+            ..default()
+        },
+        TextColor(TEXT_MUTED),
+        ChildOf(search_row),
+    ));
+
+    // Search input placeholder / prompt
+    commands.spawn((
+        EditorInternal,
+        HierarchySearchText,
+        Pickable::IGNORE,
+        Text::new("Search Hierarchy..."),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(11.0),
+            ..default()
+        },
+        TextColor(TEXT_MUTED),
+        ChildOf(search_row),
+    ));
+
+    // 3. Action Bar: Spawn Primitives Quick Buttons
     let actions_row = commands
         .spawn((
             EditorInternal,
@@ -230,7 +280,7 @@ pub fn spawn_hierarchy_panel(mut commands: Commands) {
                 overflow: Overflow::clip(),
                 ..default()
             },
-            BackgroundColor(BG_INPUT),
+            BackgroundColor(BG_CARD),
             BorderColor::all(BORDER_SUBTLE),
             ChildOf(dock_root),
         ))
@@ -241,7 +291,7 @@ pub fn spawn_hierarchy_panel(mut commands: Commands) {
     spawn_primitive_btn(&mut commands, actions_row, "+Light", SpawnPrimitiveKind::Light);
     spawn_primitive_btn(&mut commands, actions_row, "+Empty", SpawnPrimitiveKind::Empty);
 
-    // 3. Entity List Container
+    // 4. Entity List Container
     commands.spawn((
         EditorInternal,
         HierarchyListContainer,
@@ -249,8 +299,8 @@ pub fn spawn_hierarchy_panel(mut commands: Commands) {
             flex_grow: 1.0,
             width: percent(100.0),
             flex_direction: FlexDirection::Column,
-            padding: UiRect::axes(px(4), px(6)),
-            row_gap: px(2),
+            padding: UiRect::axes(px(6), px(6)),
+            row_gap: px(3),
             overflow: Overflow::clip_y(),
             ..default()
         },
@@ -270,12 +320,12 @@ fn spawn_primitive_btn(
             Node {
                 padding: UiRect::axes(px(6), px(2)),
                 border: UiRect::all(px(1)),
-                border_radius: BorderRadius::all(px(3)),
+                border_radius: radius_button(),
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
                 ..default()
             },
-            BackgroundColor(BG_CARD),
+            BackgroundColor(BG_INPUT),
             BorderColor::all(BORDER_SUBTLE),
             ChildOf(parent),
         ))
@@ -286,7 +336,7 @@ fn spawn_primitive_btn(
         })
         .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
             if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(BG_CARD);
+                *bg = BackgroundColor(BG_INPUT);
             }
         })
         .observe(move |click: On<PointerClick>, mut writer: MessageWriter<SpawnPrimitiveMessage>| {
@@ -309,16 +359,44 @@ fn spawn_primitive_btn(
     ));
 }
 
-/// Updates the hierarchy tree view to reflect all active `SceneEntity` components.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum HierarchyCategory {
+    Environment,
+    Gameplay,
+    Props,
+}
+
+impl HierarchyCategory {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Environment => "▾ Environment",
+            Self::Gameplay => "▾ Gameplay",
+            Self::Props => "▾ Props",
+        }
+    }
+}
+
+/// Updates the hierarchy tree view to reflect all active `SceneEntity` components
+/// grouped neatly into categories (Environment, Gameplay, Props).
 pub fn update_hierarchy_list(
     mut commands: Commands,
-    entities_query: Query<(Entity, Option<&Name>, Option<&DirectionalLight>, Option<&Mesh3d>, Option<&Visibility>), With<SceneEntity>>,
+    entities_query: Query<(
+        Entity,
+        Option<&Name>,
+        Option<&DirectionalLight>,
+        Option<&PointLight>,
+        Option<&Mesh3d>,
+        Option<&crate::scene::components::ScriptComponent>,
+        Option<&crate::scene::components::GameplayTag>,
+        Option<&Visibility>,
+    ), With<SceneEntity>>,
     selection: Res<InspectorSelection>,
-    mut count_label_query: Query<&mut Text, With<HierarchyCountLabel>>,
+    state: Res<HierarchyState>,
+    mut count_label_query: Query<&mut Text, (With<HierarchyCountLabel>, Without<HierarchySearchText>)>,
     list_container_query: Query<Entity, With<HierarchyListContainer>>,
     existing_rows: Query<Entity, With<HierarchyEntityRow>>,
 ) {
-    // Only rebuild if entity counts or selection change
+    // Only rebuild if entity counts, filter, or selection change
     let count = entities_query.iter().count();
     if let Ok(mut count_text) = count_label_query.single_mut() {
         count_text.0 = format!("{}", count);
@@ -329,28 +407,85 @@ pub fn update_hierarchy_list(
     };
 
     // Check if we need to refresh list
-    if !selection.is_changed() && existing_rows.iter().count() == count {
+    if !selection.is_changed() && !state.is_changed() && existing_rows.iter().count() == count {
         return;
     }
 
-    // Clear existing rows
+    // Clear existing rows and section headers
     for row in &existing_rows {
         commands.entity(row).despawn();
     }
 
-    // Spawn new rows
-    for (entity, name, is_light, is_mesh, vis) in &entities_query {
-        let is_selected = selection.0 == Some(entity);
-        let is_hidden = vis == Some(&Visibility::Hidden);
-        let name_str = name.map(|n| n.as_str()).unwrap_or("Entity");
+    // Classify entities into categories
+    let mut items: Vec<(HierarchyCategory, Entity, String, &'static str, bool, bool)> = Vec::new();
 
-        let type_tag = if is_light.is_some() {
-            "L"
-        } else if is_mesh.is_some() {
-            "M"
+    for (entity, name, dir_light, point_light, mesh, script, gameplay_tag, vis) in &entities_query {
+        let is_hidden = vis == Some(&Visibility::Hidden);
+        let name_str = name.map(|n| n.as_str()).unwrap_or("Entity").to_string();
+        let is_selected = selection.0 == Some(entity);
+
+        let (category, icon) = if dir_light.is_some() || name_str.contains("Ground") || name_str.contains("Sky") {
+            (HierarchyCategory::Environment, "💡")
+        } else if point_light.is_some() {
+            (HierarchyCategory::Environment, "💡")
+        } else if script.is_some() || gameplay_tag.is_some() || name_str.to_lowercase().contains("player") {
+            (HierarchyCategory::Gameplay, "⚡")
+        } else if mesh.is_some() {
+            (HierarchyCategory::Props, "⬡")
         } else {
-            "•"
+            (HierarchyCategory::Props, "📦")
         };
+
+        let filter_query = state.filter.trim().to_lowercase();
+        if !filter_query.is_empty() && !name_str.to_lowercase().contains(&filter_query) {
+            continue;
+        }
+
+        items.push((category, entity, name_str, icon, is_hidden, is_selected));
+    }
+
+    // Sort by category first, then entity name
+    items.sort_by(|a, b| {
+        a.0.cmp(&b.0).then_with(|| a.2.to_lowercase().cmp(&b.2.to_lowercase()))
+    });
+
+    let mut current_category: Option<HierarchyCategory> = None;
+
+    for (category, entity, name_str, icon, is_hidden, is_selected) in items {
+        // Render Category Header if changed
+        if current_category != Some(category) {
+            current_category = Some(category);
+
+            let header_row = commands
+                .spawn((
+                    EditorInternal,
+                    HierarchyEntityRow(entity), // marker so it gets despawned on refresh
+                    Node {
+                        width: percent(100.0),
+                        height: px(22),
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        padding: UiRect::axes(px(4), px(2)),
+                        margin: UiRect::top(px(4)),
+                        ..default()
+                    },
+                    ChildOf(container_ent),
+                ))
+                .id();
+
+            commands.spawn((
+                EditorInternal,
+                Pickable::IGNORE,
+                Text::new(category.label()),
+                TextFont {
+                    font_size: bevy::text::FontSize::Px(10.5),
+                    weight: FontWeight::SEMIBOLD,
+                    ..default()
+                },
+                TextColor(TEXT_SECONDARY),
+                ChildOf(header_row),
+            ));
+        }
 
         let row_bg = if is_selected {
             ACCENT_CYAN_DIM
@@ -382,9 +517,10 @@ pub fn update_hierarchy_list(
                     flex_direction: FlexDirection::Row,
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::SpaceBetween,
-                    padding: UiRect::axes(px(8), px(2)),
+                    padding: UiRect::axes(px(10), px(2)),
+                    margin: UiRect::left(px(6)), // Indent under category
                     border: UiRect::all(px(1)),
-                    border_radius: BorderRadius::all(px(3)),
+                    border_radius: radius_button(),
                     ..default()
                 },
                 BackgroundColor(row_bg),
@@ -413,7 +549,7 @@ pub fn update_hierarchy_list(
             })
             .id();
 
-        // Left: Type Tag + Name
+        // Left: Category Icon + Name
         let label_group = commands
             .spawn((
                 EditorInternal,
@@ -431,19 +567,19 @@ pub fn update_hierarchy_list(
         commands.spawn((
             EditorInternal,
             Pickable::IGNORE,
-            Text::new(type_tag),
+            Text::new(icon),
             TextFont {
-                font_size: bevy::text::FontSize::Px(10.0),
+                font_size: bevy::text::FontSize::Px(11.0),
                 ..default()
             },
-            TextColor(ACCENT_CYAN),
+            TextColor(if is_selected { ACCENT_CYAN } else { TEXT_SECONDARY }),
             ChildOf(label_group),
         ));
 
         commands.spawn((
             EditorInternal,
             Pickable::IGNORE,
-            Text::new(if is_hidden { format!("{name_str} (Hidden)") } else { name_str.to_string() }),
+            Text::new(if is_hidden { format!("{name_str} (Hidden)") } else { name_str }),
             TextFont {
                 font_size: bevy::text::FontSize::Px(11.5),
                 ..default()
@@ -648,3 +784,54 @@ pub fn handle_hierarchy_collapse(
         }
     }
 }
+
+/// Handles keyboard input when searching in the hierarchy.
+pub fn handle_hierarchy_search_input(
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut char_events: MessageReader<bevy::input::keyboard::KeyboardInput>,
+    mut state: ResMut<HierarchyState>,
+    mut search_query: Query<&mut Text, With<HierarchySearchText>>,
+) {
+    if state.is_collapsed {
+        return;
+    }
+
+    let mut changed = false;
+
+    // Check backspace
+    if keyboard_input.just_pressed(KeyCode::Backspace) {
+        if !state.filter.is_empty() {
+            state.filter.pop();
+            changed = true;
+        }
+    }
+
+    // Check escape to clear filter
+    if keyboard_input.just_pressed(KeyCode::Escape) && !state.filter.is_empty() {
+        state.filter.clear();
+        changed = true;
+    }
+
+    // Process character typing
+    for ev in char_events.read() {
+        if ev.state.is_pressed() {
+            if let bevy::input::keyboard::Key::Character(ref ch) = ev.logical_key {
+                if ch.len() == 1 && ch.chars().next().map_or(false, |c| !c.is_control()) {
+                    state.filter.push_str(ch);
+                    changed = true;
+                }
+            }
+        }
+    }
+
+    if changed {
+        if let Ok(mut search_text) = search_query.single_mut() {
+            if state.filter.is_empty() {
+                search_text.0 = "Search Hierarchy...".to_string();
+            } else {
+                search_text.0 = state.filter.clone();
+            }
+        }
+    }
+}
+

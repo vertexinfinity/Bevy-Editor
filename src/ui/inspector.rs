@@ -103,6 +103,9 @@ pub struct ScaleDisplayLabel;
 #[derive(Component)]
 pub struct ComponentsBadgesLabel;
 
+#[derive(Component)]
+pub struct ScriptPropsLabel;
+
 // Messages for Inspector Actions
 #[derive(Message, Clone, Copy, Debug)]
 pub struct ToggleDebugModeMessage;
@@ -127,6 +130,8 @@ pub enum TransformNudgeAction {
     #[allow(dead_code)]
     RotateZ(f32),
     ScaleUniform(f32),
+    ResetPosition,
+    ResetRotation,
     ResetScale,
 }
 
@@ -137,6 +142,12 @@ pub enum AddComponentKind {
     Velocity,
     PointLight,
     GameplayTag,
+}
+
+#[derive(Message, Clone, Debug)]
+pub enum ScriptPropAction {
+    NudgeFloat { key: String, delta: f32 },
+    ToggleBool { key: String },
 }
 
 /// Spawns the entire inspector dock including clean and debug views.
@@ -600,45 +611,116 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
             EditorInternal,
             Node {
                 flex_direction: FlexDirection::Column,
-                padding: UiRect::all(px(10)),
-                row_gap: px(8),
+                padding: UiRect::all(SPACE_COMPACT),
+                row_gap: SPACE_COMPACT,
                 border: UiRect::all(px(1)),
-                border_radius: BorderRadius::all(px(4)),
+                border_radius: radius_card(),
                 ..default()
             },
             BackgroundColor(BG_CARD),
-            BorderColor::all(BORDER_SUBTLE),
+            BorderColor::all(BORDER_CARD),
             ChildOf(parent),
+        ))
+        .id();
+
+    let tf_header = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                flex_direction: FlexDirection::Row,
+                justify_content: JustifyContent::SpaceBetween,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            ChildOf(transform_card),
         ))
         .id();
 
     commands.spawn((
         EditorInternal,
         Pickable::IGNORE,
-        Text::new("📐 Transform"),
+        Text::new("Transform"),
         TextFont {
-            font_size: bevy::text::FontSize::Px(12.0),
+            font_size: bevy::text::FontSize::Px(FONT_SIZE_NORMAL),
             ..default()
         },
         TextColor(TEXT_PRIMARY),
-        ChildOf(transform_card),
+        ChildOf(tf_header),
     ));
 
-    // 1. Position row & nudges
+    // Reset All Transform Button
+    let reset_all_btn = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                padding: UiRect::axes(px(6), px(2)),
+                border: UiRect::all(px(1)),
+                border_radius: radius_button(),
+                ..default()
+            },
+            BackgroundColor(BG_INPUT),
+            BorderColor::all(BORDER_SUBTLE),
+            ChildOf(tf_header),
+        ))
+        .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_HOVER);
+            }
+        })
+        .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_INPUT);
+            }
+        })
+        .observe(|click: On<PointerClick>, mut writer: MessageWriter<TransformNudgeAction>| {
+            if click.button == PointerButton::Primary {
+                writer.write(TransformNudgeAction::ResetPosition);
+                writer.write(TransformNudgeAction::ResetRotation);
+                writer.write(TransformNudgeAction::ResetScale);
+            }
+        })
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new("↺ Reset"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(FONT_SIZE_SMALL),
+            ..default()
+        },
+        TextColor(TEXT_SECONDARY),
+        ChildOf(reset_all_btn),
+    ));
+
+    // 1. Position row & controls
+    let pos_row = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                flex_direction: FlexDirection::Row,
+                justify_content: JustifyContent::SpaceBetween,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            ChildOf(transform_card),
+        ))
+        .id();
+
     commands.spawn((
         EditorInternal,
         PositionDisplayLabel,
         Pickable::IGNORE,
         Text::new("Position: X: 0.00   Y: 0.00   Z: 0.00"),
         TextFont {
-            font_size: bevy::text::FontSize::Px(11.0),
+            font_size: bevy::text::FontSize::Px(FONT_SIZE_SMALL),
             ..default()
         },
         TextColor(TEXT_SECONDARY),
-        ChildOf(transform_card),
+        ChildOf(pos_row),
     ));
 
-    let pos_nudges = commands
+    let pos_actions = commands
         .spawn((
             EditorInternal,
             Node {
@@ -646,32 +728,46 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
                 column_gap: px(4),
                 ..default()
             },
+            ChildOf(pos_row),
+        ))
+        .id();
+
+    spawn_nudge_btn(commands, pos_actions, "-X", TransformNudgeAction::TranslateX(-0.5));
+    spawn_nudge_btn(commands, pos_actions, "+X", TransformNudgeAction::TranslateX(0.5));
+    spawn_nudge_btn(commands, pos_actions, "-Y", TransformNudgeAction::TranslateY(-0.5));
+    spawn_nudge_btn(commands, pos_actions, "+Y", TransformNudgeAction::TranslateY(0.5));
+    spawn_nudge_btn(commands, pos_actions, "-Z", TransformNudgeAction::TranslateZ(-0.5));
+    spawn_nudge_btn(commands, pos_actions, "+Z", TransformNudgeAction::TranslateZ(0.5));
+    spawn_nudge_btn(commands, pos_actions, "↺", TransformNudgeAction::ResetPosition);
+
+    // 2. Rotation row & controls
+    let rot_row = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                flex_direction: FlexDirection::Row,
+                justify_content: JustifyContent::SpaceBetween,
+                align_items: AlignItems::Center,
+                ..default()
+            },
             ChildOf(transform_card),
         ))
         .id();
 
-    spawn_nudge_btn(commands, pos_nudges, "-X", TransformNudgeAction::TranslateX(-0.5));
-    spawn_nudge_btn(commands, pos_nudges, "+X", TransformNudgeAction::TranslateX(0.5));
-    spawn_nudge_btn(commands, pos_nudges, "-Y", TransformNudgeAction::TranslateY(-0.5));
-    spawn_nudge_btn(commands, pos_nudges, "+Y", TransformNudgeAction::TranslateY(0.5));
-    spawn_nudge_btn(commands, pos_nudges, "-Z", TransformNudgeAction::TranslateZ(-0.5));
-    spawn_nudge_btn(commands, pos_nudges, "+Z", TransformNudgeAction::TranslateZ(0.5));
-
-    // 2. Rotation row & nudges
     commands.spawn((
         EditorInternal,
         RotationDisplayLabel,
         Pickable::IGNORE,
         Text::new("Rotation: X: 0.0°   Y: 0.0°   Z: 0.0°"),
         TextFont {
-            font_size: bevy::text::FontSize::Px(11.0),
+            font_size: bevy::text::FontSize::Px(FONT_SIZE_SMALL),
             ..default()
         },
         TextColor(TEXT_SECONDARY),
-        ChildOf(transform_card),
+        ChildOf(rot_row),
     ));
 
-    let rot_nudges = commands
+    let rot_actions = commands
         .spawn((
             EditorInternal,
             Node {
@@ -679,30 +775,44 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
                 column_gap: px(4),
                 ..default()
             },
+            ChildOf(rot_row),
+        ))
+        .id();
+
+    spawn_nudge_btn(commands, rot_actions, "-Y", TransformNudgeAction::RotateY(-15.0));
+    spawn_nudge_btn(commands, rot_actions, "+Y", TransformNudgeAction::RotateY(15.0));
+    spawn_nudge_btn(commands, rot_actions, "-X", TransformNudgeAction::RotateX(-15.0));
+    spawn_nudge_btn(commands, rot_actions, "+X", TransformNudgeAction::RotateX(15.0));
+    spawn_nudge_btn(commands, rot_actions, "↺", TransformNudgeAction::ResetRotation);
+
+    // 3. Scale row & controls
+    let scale_row = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                flex_direction: FlexDirection::Row,
+                justify_content: JustifyContent::SpaceBetween,
+                align_items: AlignItems::Center,
+                ..default()
+            },
             ChildOf(transform_card),
         ))
         .id();
 
-    spawn_nudge_btn(commands, rot_nudges, "-Y 15°", TransformNudgeAction::RotateY(-15.0));
-    spawn_nudge_btn(commands, rot_nudges, "+Y 15°", TransformNudgeAction::RotateY(15.0));
-    spawn_nudge_btn(commands, rot_nudges, "-X 15°", TransformNudgeAction::RotateX(-15.0));
-    spawn_nudge_btn(commands, rot_nudges, "+X 15°", TransformNudgeAction::RotateX(15.0));
-
-    // 3. Scale row & nudges
     commands.spawn((
         EditorInternal,
         ScaleDisplayLabel,
         Pickable::IGNORE,
         Text::new("Scale: X: 1.00   Y: 1.00   Z: 1.00"),
         TextFont {
-            font_size: bevy::text::FontSize::Px(11.0),
+            font_size: bevy::text::FontSize::Px(FONT_SIZE_SMALL),
             ..default()
         },
         TextColor(TEXT_SECONDARY),
-        ChildOf(transform_card),
+        ChildOf(scale_row),
     ));
 
-    let scale_nudges = commands
+    let scale_actions = commands
         .spawn((
             EditorInternal,
             Node {
@@ -710,28 +820,28 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
                 column_gap: px(4),
                 ..default()
             },
-            ChildOf(transform_card),
+            ChildOf(scale_row),
         ))
         .id();
 
-    spawn_nudge_btn(commands, scale_nudges, "-0.1", TransformNudgeAction::ScaleUniform(0.9));
-    spawn_nudge_btn(commands, scale_nudges, "+0.1", TransformNudgeAction::ScaleUniform(1.1));
-    spawn_nudge_btn(commands, scale_nudges, "Reset 1.0", TransformNudgeAction::ResetScale);
+    spawn_nudge_btn(commands, scale_actions, "-0.1", TransformNudgeAction::ScaleUniform(0.9));
+    spawn_nudge_btn(commands, scale_actions, "+0.1", TransformNudgeAction::ScaleUniform(1.1));
+    spawn_nudge_btn(commands, scale_actions, "↺", TransformNudgeAction::ResetScale);
 
-    // C. Attached Components Card
+    // C. Attached Game Components Card
     let comp_card = commands
         .spawn((
             EditorInternal,
             Node {
                 flex_direction: FlexDirection::Column,
-                padding: UiRect::all(px(10)),
+                padding: UiRect::all(SPACE_COMPACT),
                 row_gap: px(6),
                 border: UiRect::all(px(1)),
-                border_radius: BorderRadius::all(px(4)),
+                border_radius: radius_card(),
                 ..default()
             },
             BackgroundColor(BG_CARD),
-            BorderColor::all(BORDER_SUBTLE),
+            BorderColor::all(BORDER_CARD),
             ChildOf(parent),
         ))
         .id();
@@ -739,9 +849,9 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
     commands.spawn((
         EditorInternal,
         Pickable::IGNORE,
-        Text::new("📦 Attached Components:"),
+        Text::new("Components"),
         TextFont {
-            font_size: bevy::text::FontSize::Px(12.0),
+            font_size: bevy::text::FontSize::Px(FONT_SIZE_NORMAL),
             ..default()
         },
         TextColor(TEXT_PRIMARY),
@@ -754,27 +864,100 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
         Pickable::IGNORE,
         Text::new("None"),
         TextFont {
-            font_size: bevy::text::FontSize::Px(11.0),
+            font_size: bevy::text::FontSize::Px(FONT_SIZE_SMALL),
             ..default()
         },
         TextColor(ACCENT_CYAN),
         ChildOf(comp_card),
     ));
 
-    // D. Add Component Section
+    // D. Script Properties Card (Interactive Game Script Tuning)
+    let script_card = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                flex_direction: FlexDirection::Column,
+                padding: UiRect::all(SPACE_COMPACT),
+                row_gap: px(6),
+                border: UiRect::all(px(1)),
+                border_radius: radius_card(),
+                ..default()
+            },
+            BackgroundColor(BG_CARD),
+            BorderColor::all(BORDER_CARD),
+            ChildOf(parent),
+        ))
+        .id();
+
+    let script_header = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                flex_direction: FlexDirection::Row,
+                justify_content: JustifyContent::SpaceBetween,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            ChildOf(script_card),
+        ))
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new("Script Properties 📜"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(FONT_SIZE_NORMAL),
+            ..default()
+        },
+        TextColor(TEXT_PRIMARY),
+        ChildOf(script_header),
+    ));
+
+    let script_nudges = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                flex_direction: FlexDirection::Row,
+                column_gap: px(4),
+                ..default()
+            },
+            ChildOf(script_header),
+        ))
+        .id();
+
+    spawn_script_prop_btn(commands, script_nudges, "Speed -1", ScriptPropAction::NudgeFloat { key: "move_speed".to_string(), delta: -1.0 });
+    spawn_script_prop_btn(commands, script_nudges, "Speed +1", ScriptPropAction::NudgeFloat { key: "move_speed".to_string(), delta: 1.0 });
+    spawn_script_prop_btn(commands, script_nudges, "Jump +2", ScriptPropAction::NudgeFloat { key: "jump_force".to_string(), delta: 2.0 });
+    spawn_script_prop_btn(commands, script_nudges, "Toggle Active", ScriptPropAction::ToggleBool { key: "is_active".to_string() });
+
+    commands.spawn((
+        EditorInternal,
+        ScriptPropsLabel,
+        Pickable::IGNORE,
+        Text::new("No ScriptComponent on selected entity"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(FONT_SIZE_SMALL),
+            ..default()
+        },
+        TextColor(TEXT_SECONDARY),
+        ChildOf(script_card),
+    ));
+
+    // E. Add Component Section
     let add_comp_card = commands
         .spawn((
             EditorInternal,
             Node {
                 flex_direction: FlexDirection::Column,
-                padding: UiRect::all(px(10)),
-                row_gap: px(8),
+                padding: UiRect::all(SPACE_COMPACT),
+                row_gap: SPACE_COMPACT,
                 border: UiRect::all(px(1)),
-                border_radius: BorderRadius::all(px(4)),
+                border_radius: radius_card(),
                 ..default()
             },
             BackgroundColor(BG_CARD),
-            BorderColor::all(BORDER_SUBTLE),
+            BorderColor::all(BORDER_CARD),
             ChildOf(parent),
         ))
         .id();
@@ -782,9 +965,9 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
     commands.spawn((
         EditorInternal,
         Pickable::IGNORE,
-        Text::new("➕ Add Component:"),
+        Text::new("+ Add Component"),
         TextFont {
-            font_size: bevy::text::FontSize::Px(12.0),
+            font_size: bevy::text::FontSize::Px(FONT_SIZE_NORMAL),
             ..default()
         },
         TextColor(TEXT_PRIMARY),
@@ -805,10 +988,11 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
         ))
         .id();
 
-    spawn_add_comp_btn(commands, add_btns_grid, "+ Script (Lua)", AddComponentKind::Script);
-    spawn_add_comp_btn(commands, add_btns_grid, "+ Spin Animation", AddComponentKind::SpinAnimation);
+    spawn_add_comp_btn(commands, add_btns_grid, "+ Mesh", AddComponentKind::Script);
+    spawn_add_comp_btn(commands, add_btns_grid, "+ Light", AddComponentKind::PointLight);
+    spawn_add_comp_btn(commands, add_btns_grid, "+ Script", AddComponentKind::Script);
+    spawn_add_comp_btn(commands, add_btns_grid, "+ Spin Anim", AddComponentKind::SpinAnimation);
     spawn_add_comp_btn(commands, add_btns_grid, "+ Velocity", AddComponentKind::Velocity);
-    spawn_add_comp_btn(commands, add_btns_grid, "+ Point Light", AddComponentKind::PointLight);
     spawn_add_comp_btn(commands, add_btns_grid, "+ Gameplay Tag", AddComponentKind::GameplayTag);
 }
 
@@ -896,6 +1080,50 @@ fn spawn_add_comp_btn(commands: &mut Commands, parent: Entity, label: &str, kind
             ..default()
         },
         TextColor(TEXT_PRIMARY),
+        ChildOf(btn),
+    ));
+}
+
+fn spawn_script_prop_btn(commands: &mut Commands, parent: Entity, label: &str, action: ScriptPropAction) {
+    let btn = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                padding: UiRect::axes(px(6), px(3)),
+                border: UiRect::all(px(1)),
+                border_radius: BorderRadius::all(px(3)),
+                ..default()
+            },
+            BackgroundColor(BG_INPUT),
+            BorderColor::all(BORDER_SUBTLE),
+            ChildOf(parent),
+        ))
+        .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_HOVER);
+            }
+        })
+        .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_INPUT);
+            }
+        })
+        .observe(move |click: On<PointerClick>, mut writer: MessageWriter<ScriptPropAction>| {
+            if click.button == PointerButton::Primary {
+                writer.write(action.clone());
+            }
+        })
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new(label),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(10.0),
+            ..default()
+        },
+        TextColor(ACCENT_CYAN),
         ChildOf(btn),
     ));
 }
@@ -1095,6 +1323,8 @@ pub fn handle_transform_nudges(
             TransformNudgeAction::RotateY(deg) => transform.rotate_local_y(deg.to_radians()),
             TransformNudgeAction::RotateZ(deg) => transform.rotate_local_z(deg.to_radians()),
             TransformNudgeAction::ScaleUniform(s) => transform.scale *= s,
+            TransformNudgeAction::ResetPosition => transform.translation = Vec3::ZERO,
+            TransformNudgeAction::ResetRotation => transform.rotation = Quat::IDENTITY,
             TransformNudgeAction::ResetScale => transform.scale = Vec3::ONE,
         }
     }
@@ -1142,6 +1372,37 @@ pub fn handle_add_component_actions(
     }
 }
 
+/// Handles live interactive tuning of ScriptComponent properties in inspector.
+pub fn handle_script_prop_actions(
+    mut actions: MessageReader<ScriptPropAction>,
+    selection: Res<InspectorSelection>,
+    mut scripts: Query<&mut ScriptComponent>,
+) {
+    let Some(selected) = selection.0 else { return };
+    let Ok(mut script) = scripts.get_mut(selected) else { return };
+
+    for action in actions.read() {
+        match action {
+            ScriptPropAction::NudgeFloat { key, delta } => {
+                if let Some(prop) = script.properties.get_mut(key) {
+                    if let ScriptPropertyVal::Float(val) = prop {
+                        *val += delta;
+                        info!("Updated script property {} to {:.2}", key, *val);
+                    }
+                }
+            }
+            ScriptPropAction::ToggleBool { key } => {
+                if let Some(prop) = script.properties.get_mut(key) {
+                    if let ScriptPropertyVal::Bool(val) = prop {
+                        *val = !*val;
+                        info!("Toggled script property {} to {}", key, *val);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Updates the clean transform inspector labels based on the currently selected entity.
 pub fn update_clean_transform_labels(
     selection: Res<InspectorSelection>,
@@ -1159,17 +1420,19 @@ pub fn update_clean_transform_labels(
         Option<&PointLight>,
         Option<&Visibility>,
     )>,
-    mut name_label: Query<&mut Text, (With<SelectedEntityLabel>, Without<PositionDisplayLabel>, Without<RotationDisplayLabel>, Without<ScaleDisplayLabel>, Without<ComponentsBadgesLabel>)>,
-    mut pos_label: Query<&mut Text, (With<PositionDisplayLabel>, Without<SelectedEntityLabel>, Without<RotationDisplayLabel>, Without<ScaleDisplayLabel>, Without<ComponentsBadgesLabel>)>,
-    mut rot_label: Query<&mut Text, (With<RotationDisplayLabel>, Without<SelectedEntityLabel>, Without<PositionDisplayLabel>, Without<ScaleDisplayLabel>, Without<ComponentsBadgesLabel>)>,
-    mut scale_label: Query<&mut Text, (With<ScaleDisplayLabel>, Without<SelectedEntityLabel>, Without<PositionDisplayLabel>, Without<RotationDisplayLabel>, Without<ComponentsBadgesLabel>)>,
-    mut badges_label: Query<&mut Text, (With<ComponentsBadgesLabel>, Without<SelectedEntityLabel>, Without<PositionDisplayLabel>, Without<RotationDisplayLabel>, Without<ScaleDisplayLabel>)>,
+    mut name_label: Query<&mut Text, (With<SelectedEntityLabel>, Without<PositionDisplayLabel>, Without<RotationDisplayLabel>, Without<ScaleDisplayLabel>, Without<ComponentsBadgesLabel>, Without<ScriptPropsLabel>)>,
+    mut pos_label: Query<&mut Text, (With<PositionDisplayLabel>, Without<SelectedEntityLabel>, Without<RotationDisplayLabel>, Without<ScaleDisplayLabel>, Without<ComponentsBadgesLabel>, Without<ScriptPropsLabel>)>,
+    mut rot_label: Query<&mut Text, (With<RotationDisplayLabel>, Without<SelectedEntityLabel>, Without<PositionDisplayLabel>, Without<ScaleDisplayLabel>, Without<ComponentsBadgesLabel>, Without<ScriptPropsLabel>)>,
+    mut scale_label: Query<&mut Text, (With<ScaleDisplayLabel>, Without<SelectedEntityLabel>, Without<PositionDisplayLabel>, Without<RotationDisplayLabel>, Without<ComponentsBadgesLabel>, Without<ScriptPropsLabel>)>,
+    mut badges_label: Query<&mut Text, (With<ComponentsBadgesLabel>, Without<SelectedEntityLabel>, Without<PositionDisplayLabel>, Without<RotationDisplayLabel>, Without<ScaleDisplayLabel>, Without<ScriptPropsLabel>)>,
+    mut script_label: Query<&mut Text, (With<ScriptPropsLabel>, Without<SelectedEntityLabel>, Without<PositionDisplayLabel>, Without<RotationDisplayLabel>, Without<ScaleDisplayLabel>, Without<ComponentsBadgesLabel>)>,
 ) {
     let Ok(mut name_txt) = name_label.single_mut() else { return };
     let Ok(mut pos_txt) = pos_label.single_mut() else { return };
     let Ok(mut rot_txt) = rot_label.single_mut() else { return };
     let Ok(mut scale_txt) = scale_label.single_mut() else { return };
     let Ok(mut badges_txt) = badges_label.single_mut() else { return };
+    let Ok(mut script_txt) = script_label.single_mut() else { return };
 
     let Some(selected) = selection.0 else {
         name_txt.0 = "Selected: None (Click object in scene)".to_string();
@@ -1177,11 +1440,13 @@ pub fn update_clean_transform_labels(
         rot_txt.0 = "Rotation: X: 0.0°   Y: 0.0°   Z: 0.0°".to_string();
         scale_txt.0 = "Scale: X: 1.00   Y: 1.00   Z: 1.00".to_string();
         badges_txt.0 = "None".to_string();
+        script_txt.0 = "No entity selected".to_string();
         return;
     };
 
     let Ok((name, transform, global_transform, script, spin, vel, tag, mesh, dir_light, pt_light, vis)) = entities.get(selected) else {
         name_txt.0 = format!("Selected: {:?} (Despawned)", selected);
+        script_txt.0 = "Despawned".to_string();
         return;
     };
 
@@ -1242,4 +1507,22 @@ pub fn update_clean_transform_labels(
     } else {
         badges.join(" ")
     };
+
+    // Display ScriptComponent properties if present
+    if let Some(script_comp) = script {
+        let mut lines = Vec::new();
+        lines.push(format!("File: {}", script_comp.script_file));
+        for (k, v) in &script_comp.properties {
+            match v {
+                ScriptPropertyVal::Float(f) => lines.push(format!("• {}: {:.2}", k, f)),
+                ScriptPropertyVal::Int(i) => lines.push(format!("• {}: {}", k, i)),
+                ScriptPropertyVal::Bool(b) => lines.push(format!("• {}: {}", k, b)),
+                ScriptPropertyVal::String(s) => lines.push(format!("• {}: \"{}\"", k, s)),
+                ScriptPropertyVal::Vec3(v) => lines.push(format!("• {}: ({:.1}, {:.1}, {:.1})", k, v.x, v.y, v.z)),
+            }
+        }
+        script_txt.0 = lines.join("\n");
+    } else {
+        script_txt.0 = "No ScriptComponent attached".to_string();
+    }
 }
