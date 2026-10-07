@@ -1,5 +1,6 @@
 //! Scene management module for Bevy-Editor.
 
+pub mod components;
 pub mod drag_drop;
 pub mod primitives;
 pub mod save_load;
@@ -22,7 +23,10 @@ impl Plugin for SceneManagerPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<CurrentScene>()
             .register_type::<EditorInternal>()
-            .add_plugins(drag_drop::DragDropPlugin)
+            .add_plugins((
+                components::AuthorableComponentsPlugin,
+                drag_drop::DragDropPlugin,
+            ))
             .add_systems(Startup, primitives::spawn_starter_scene);
     }
 }

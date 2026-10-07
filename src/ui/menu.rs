@@ -1,20 +1,31 @@
-//! Top menu bar with File, Save, Open, and Export actions.
-
-use std::path::PathBuf;
-use bevy::{picking::hover::Hovered, prelude::*, ui::Pressed};
+use bevy::{
+    ecs::{
+        message::{Message, MessageWriter},
+        system::RunSystemOnce,
+    },
+    picking::{
+        events::{PointerClick, PointerOut, PointerOver},
+        pointer::PointerButton,
+    },
+    prelude::*,
+};
 use crate::export::RequestExportMessage;
-use crate::scene::{save_load, CurrentScene, EditorInternal};
+use crate::scene::{primitives, save_load, CurrentScene, EditorInternal};
 
-#[derive(Component, Clone, Copy)]
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MenuAction {
     NewScene,
     OpenScene,
     SaveScene,
+    SaveAsScene,
     ExportAndroid,
     ExportWindows,
     ExportWeb,
     ExportIos,
 }
+
+#[derive(Message, Clone, Copy, Debug)]
+pub struct MenuActionMessage(pub MenuAction);
 
 /// Spawns the top menu bar.
 pub fn spawn_menu_bar(mut commands: Commands) {
@@ -43,6 +54,7 @@ pub fn spawn_menu_bar(mut commands: Commands) {
     // Spawn Title / Brand
     commands.spawn((
         EditorInternal,
+        Pickable::IGNORE,
         Text::new("Bevy Editor"),
         TextFont {
             font_size: bevy::text::FontSize::Px(13.0),
@@ -60,10 +72,12 @@ pub fn spawn_menu_bar(mut commands: Commands) {
     spawn_menu_button(&mut commands, bar_root, "New", MenuAction::NewScene);
     spawn_menu_button(&mut commands, bar_root, "Open...", MenuAction::OpenScene);
     spawn_menu_button(&mut commands, bar_root, "Save", MenuAction::SaveScene);
+    spawn_menu_button(&mut commands, bar_root, "Save As...", MenuAction::SaveAsScene);
 
     // Separator
     commands.spawn((
         EditorInternal,
+        Pickable::IGNORE,
         Node {
             width: px(1),
             height: px(18),
@@ -103,10 +117,32 @@ fn spawn_menu_button(
             BorderColor::all(Color::srgb(0.28, 0.28, 0.32)),
             ChildOf(parent),
         ))
+        .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(Color::srgb(0.28, 0.34, 0.46));
+            }
+        })
+        .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(Color::srgb(0.18, 0.18, 0.22));
+            }
+        })
+        .observe(
+            |click: On<PointerClick>,
+             query: Query<&MenuAction>,
+             mut writer: MessageWriter<MenuActionMessage>| {
+                if click.button == PointerButton::Primary {
+                    if let Ok(action) = query.get(click.entity) {
+                        writer.write(MenuActionMessage(*action));
+                    }
+                }
+            },
+        )
         .id();
 
     commands.spawn((
         EditorInternal,
+        Pickable::IGNORE,
         Text::new(label),
         TextFont {
             font_size: bevy::text::FontSize::Px(12.0),
@@ -117,29 +153,37 @@ fn spawn_menu_button(
     ));
 }
 
-/// Handles clicking top menu action buttons.
+/// Handles executing menu actions received via MenuActionMessage.
 pub fn handle_menu_actions(world: &mut World) {
-    let mut pressed_actions = Vec::new();
+    let actions: Vec<MenuAction> = {
+        let Some(mut messages) = world.get_resource_mut::<Messages<MenuActionMessage>>() else {
+            return;
+        };
+        messages.drain().map(|m| m.0).collect()
+    };
 
-    // Query pressed and hovered states
-    {
-        let mut query = world.query::<(Entity, &MenuAction, Option<&Pressed>, Option<&Hovered>, &mut BackgroundColor)>();
-        for (_entity, action, pressed, hovered, mut bg) in query.iter_mut(world) {
-            if pressed.is_some() {
-                *bg = BackgroundColor(Color::srgb(0.3, 0.45, 0.8));
-                pressed_actions.push(*action);
-            } else if hovered.is_some() {
-                *bg = BackgroundColor(Color::srgb(0.26, 0.26, 0.32));
-            } else {
-                *bg = BackgroundColor(Color::srgb(0.18, 0.18, 0.22));
-            }
-        }
-    }
-
-    for action in pressed_actions {
+    for action in actions {
         match action {
             MenuAction::NewScene => {
-                info!("Creating new scene...");
+                info!("Creating new scene: resetting user entities...");
+                let entities_to_despawn: Vec<Entity> = world
+                    .iter_entities()
+                    .filter(|e| !e.contains::<EditorInternal>())
+                    .map(|e| e.id())
+                    .collect();
+
+                for e in entities_to_despawn {
+                    world.despawn(e);
+                }
+
+                if let Some(mut current_scene) = world.get_resource_mut::<CurrentScene>() {
+                    current_scene.file_path = None;
+                    current_scene.is_modified = false;
+                }
+
+                // Re-spawn starter scene
+                let _ = world.run_system_once(primitives::spawn_starter_scene);
+                info!("New scene created successfully.");
             }
             MenuAction::OpenScene => {
                 if let Some(file) = rfd::FileDialog::new()
@@ -147,22 +191,41 @@ pub fn handle_menu_actions(world: &mut World) {
                     .pick_file()
                 {
                     info!("Selected scene to open: {:?}", file);
+                    // Clear existing user entities
+                    let entities_to_despawn: Vec<Entity> = world
+                        .iter_entities()
+                        .filter(|e| !e.contains::<EditorInternal>())
+                        .map(|e| e.id())
+                        .collect();
+
+                    for e in entities_to_despawn {
+                        world.despawn(e);
+                    }
+
+                    let path_str = file.to_string_lossy().to_string();
+                    let asset_server = world.resource::<AssetServer>().clone();
+                    world.spawn((
+                        Name::new(format!("Scene: {}", file.file_name().and_then(|n| n.to_str()).unwrap_or("loaded"))),
+                        bevy::world_serialization::DynamicWorldRoot(asset_server.load(path_str)),
+                        Transform::IDENTITY,
+                    ));
+
+                    if let Some(mut current_scene) = world.get_resource_mut::<CurrentScene>() {
+                        current_scene.file_path = Some(file);
+                        current_scene.is_modified = false;
+                    }
                 }
             }
             MenuAction::SaveScene => {
-                let scene_path = world
-                    .resource::<CurrentScene>()
-                    .file_path
-                    .clone()
-                    .unwrap_or_else(|| {
-                        rfd::FileDialog::new()
-                            .add_filter("Bevy Scene (*.ron)", &["ron"])
-                            .set_file_name("scene.ron")
-                            .save_file()
-                            .unwrap_or_else(|| PathBuf::from("scene.ron"))
-                    });
-
-                let _ = save_load::save_world_to_scene(world, &scene_path);
+                let existing_path = world.resource::<CurrentScene>().file_path.clone();
+                if let Some(path) = existing_path {
+                    let _ = save_load::save_world_to_scene(world, &path);
+                } else {
+                    save_as_dialog(world);
+                }
+            }
+            MenuAction::SaveAsScene => {
+                save_as_dialog(world);
             }
             MenuAction::ExportAndroid => {
                 trigger_export(world, "android");
@@ -175,6 +238,21 @@ pub fn handle_menu_actions(world: &mut World) {
             }
             MenuAction::ExportIos => {
                 trigger_export(world, "ios");
+            }
+        }
+    }
+}
+
+fn save_as_dialog(world: &mut World) {
+    if let Some(file) = rfd::FileDialog::new()
+        .add_filter("Bevy Scene (*.ron)", &["ron"])
+        .set_file_name("scene.ron")
+        .save_file()
+    {
+        if let Ok(()) = save_load::save_world_to_scene(world, &file) {
+            if let Some(mut current_scene) = world.get_resource_mut::<CurrentScene>() {
+                current_scene.file_path = Some(file);
+                current_scene.is_modified = false;
             }
         }
     }

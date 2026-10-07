@@ -3,7 +3,12 @@
 use std::fs;
 use std::path::PathBuf;
 use bevy::{
+    ecs::message::{Message, MessageReader, MessageWriter},
     gltf::GltfAssetLabel,
+    picking::{
+        events::{PointerClick, PointerOut, PointerOver},
+        pointer::PointerButton,
+    },
     prelude::*,
     world_serialization::{DynamicWorldRoot, WorldAssetRoot},
 };
@@ -17,6 +22,9 @@ pub struct AssetItem {
     pub file_name: String,
     pub is_dir: bool,
 }
+
+#[derive(Message, Clone)]
+pub struct SpawnAssetMessage(pub AssetItem);
 
 pub fn spawn_asset_browser(mut commands: Commands) {
     let browser_root = commands
@@ -59,6 +67,7 @@ pub fn spawn_asset_browser(mut commands: Commands) {
 
     commands.spawn((
         EditorInternal,
+        Pickable::IGNORE,
         Text::new("📁 Project Explorer (assets/)"),
         TextFont {
             font_size: bevy::text::FontSize::Px(12.0),
@@ -103,6 +112,7 @@ fn populate_asset_list(commands: &mut Commands, parent: Entity) {
     if entries.is_empty() {
         commands.spawn((
             EditorInternal,
+            Pickable::IGNORE,
             Text::new("No files in assets/ - Drag .glb/.gltf here"),
             TextFont {
                 font_size: bevy::text::FontSize::Px(11.0),
@@ -145,10 +155,28 @@ fn populate_asset_list(commands: &mut Commands, parent: Entity) {
                 BackgroundColor(Color::srgb(0.18, 0.18, 0.22)),
                 ChildOf(parent),
             ))
+            .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+                if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                    *bg = BackgroundColor(Color::srgb(0.26, 0.32, 0.44));
+                }
+            })
+            .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+                if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                    *bg = BackgroundColor(Color::srgb(0.18, 0.18, 0.22));
+                }
+            })
+            .observe(|click: On<PointerClick>, query: Query<&AssetItem>, mut writer: MessageWriter<SpawnAssetMessage>| {
+                if click.button == PointerButton::Primary {
+                    if let Ok(item) = query.get(click.entity) {
+                        writer.write(SpawnAssetMessage(item.clone()));
+                    }
+                }
+            })
             .id();
 
         commands.spawn((
             EditorInternal,
+            Pickable::IGNORE,
             Text::new(label),
             TextFont {
                 font_size: bevy::text::FontSize::Px(11.0),
@@ -160,27 +188,15 @@ fn populate_asset_list(commands: &mut Commands, parent: Entity) {
     }
 }
 
-/// Handles clicking or double-clicking asset items to spawn them.
-pub fn handle_asset_item_interactions(
-    world: &mut World,
+/// Handles spawn messages when an asset item is clicked.
+pub fn handle_spawn_asset_messages(
+    mut messages: MessageReader<SpawnAssetMessage>,
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut export_status: ResMut<ExportStatus>,
 ) {
-    let mut clicked_items = Vec::new();
-
-    {
-        let mut query = world.query::<(Entity, &AssetItem, Option<&bevy::ui::Pressed>, Option<&bevy::picking::hover::Hovered>, &mut BackgroundColor)>();
-        for (_entity, item, pressed, hovered, mut bg) in query.iter_mut(world) {
-            if pressed.is_some() {
-                *bg = BackgroundColor(Color::srgb(0.3, 0.45, 0.8));
-                clicked_items.push(item.clone());
-            } else if hovered.is_some() {
-                *bg = BackgroundColor(Color::srgb(0.24, 0.24, 0.28));
-            } else {
-                *bg = BackgroundColor(Color::srgb(0.18, 0.18, 0.22));
-            }
-        }
-    }
-
-    for item in clicked_items {
+    for msg in messages.read() {
+        let item = &msg.0;
         if item.is_dir {
             continue;
         }
@@ -190,32 +206,26 @@ pub fn handle_asset_item_interactions(
 
         match ext.as_str() {
             "glb" | "gltf" => {
-                let asset_server = world.resource::<AssetServer>().clone();
-                world.spawn((
+                commands.spawn((
                     Name::new(item.file_name.clone()),
-                    WorldAssetRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(path_str.clone()))),
+                    WorldAssetRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(path_str))),
                     Transform::IDENTITY,
                 ));
-                if let Some(mut status) = world.get_resource_mut::<ExportStatus>() {
-                    *status = ExportStatus::InProgress {
-                        target: "Explorer".to_string(),
-                        progress: format!("Spawned model: {}", item.file_name),
-                    };
-                }
+                *export_status = ExportStatus::InProgress {
+                    target: "Explorer".to_string(),
+                    progress: format!("Spawned model: {}", item.file_name),
+                };
             }
             "ron" | "bsn" => {
-                let asset_server = world.resource::<AssetServer>().clone();
-                world.spawn((
+                commands.spawn((
                     Name::new(format!("Scene: {}", item.file_name)),
                     DynamicWorldRoot(asset_server.load(path_str)),
                     Transform::IDENTITY,
                 ));
-                if let Some(mut status) = world.get_resource_mut::<ExportStatus>() {
-                    *status = ExportStatus::InProgress {
-                        target: "Explorer".to_string(),
-                        progress: format!("Loaded scene: {}", item.file_name),
-                    };
-                }
+                *export_status = ExportStatus::InProgress {
+                    target: "Explorer".to_string(),
+                    progress: format!("Loaded scene: {}", item.file_name),
+                };
             }
             _ => {}
         }
