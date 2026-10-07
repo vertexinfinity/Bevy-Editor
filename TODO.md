@@ -38,8 +38,8 @@
   - Serialized to `.ron` / `.bsn` using Bevy reflection and deserialized automatically upon scene loading.
 - 🟢 **Object & Script Assignment**:
   - `entity_refs: HashMap<String, Entity>` allows linking target objects, cameras, doors, and triggers to script components.
-- 🟡 **In-Editor Script Property Editor**:
-  - Property rows in Inspector allowing live value tweaks for numbers, strings, and booleans.
+- 🟢 **In-Editor Script Property Editor**:
+  - Dedicated card in clean Inspector showing file path, public properties, and interactive live tuning buttons (`Speed -1`, `Speed +1`, `Jump +2`, `Toggle Active`).
 - 🔴 **Live Hot-Reloading Script Engines**:
   - Bevy Lua integration (e.g. `bevy_mod_scripting` or `mlua`) with file watching.
   - Rhai embedded scripting backend.
@@ -122,8 +122,8 @@
    - Verify and enhance direct viewport drag manipulation of transform handles (Red X, Green Y, Blue Z axes) with camera projection.
 2. **3D Selection Bounding Box (AABB) & Wireframe Overlay**:
    - Draw wireframe bounding box around the active entity's mesh geometry in addition to the ground circle.
-3. **In-Editor Script Property Editor**:
-   - Expose interactive property fields in the Inspector card for `ScriptComponent` key-value pairs (`Float`, `Int`, `Bool`, `String`).
+3. 🟢 **In-Editor Script Property Editor**:
+   - Completed in `src/ui/inspector.rs` with live key-value display and mutation buttons.
 4. **Console / Output Log Dockable Panel**:
    - Dockable bottom panel capturing engine logs, warnings, import events, and AI bridge commands.
 5. **Drag-to-Assign Entity Reference Slot in Inspector**:
