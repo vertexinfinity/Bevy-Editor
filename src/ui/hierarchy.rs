@@ -478,8 +478,9 @@ pub fn update_hierarchy_list(
                 BackgroundColor(if is_hidden { BG_INPUT } else { ACCENT_CYAN_DIM }),
                 ChildOf(right_group),
             ))
-            .observe(move |click: On<PointerClick>, mut vis_query: Query<&mut Visibility>, mut commands: Commands| {
+            .observe(move |mut click: On<PointerClick>, mut vis_query: Query<&mut Visibility>, mut commands: Commands| {
                 if click.button == PointerButton::Primary {
+                    click.propagate(false);
                     if let Ok(mut v) = vis_query.get_mut(entity) {
                         *v = if *v == Visibility::Hidden { Visibility::Inherited } else { Visibility::Hidden };
                     } else {

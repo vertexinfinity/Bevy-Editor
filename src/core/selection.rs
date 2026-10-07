@@ -180,12 +180,27 @@ pub fn draw_selection_gizmo(
     gizmos.arrow(pos, pos + y_axis, Color::srgb(0.25, 0.85, 0.35));
     gizmos.arrow(pos, pos + z_axis, Color::srgb(0.25, 0.65, 0.98));
 
-    // Optional mode badge gizmo depending on tool
+    // 4. Mode-specific gizmo overlays
     if active_tool.current_id == "rotate" {
+        // Draw 3-axis rotation rings (Radius 1.35)
+        let ring_radius = 1.35;
+        // Pitch (X-axis ring - Red)
+        gizmos.circle(
+            Isometry3d::new(pos, rot * Quat::from_rotation_y(core::f32::consts::FRAC_PI_2)),
+            ring_radius,
+            Color::srgb(0.95, 0.25, 0.25),
+        );
+        // Yaw (Y-axis ring - Green)
+        gizmos.circle(
+            Isometry3d::new(pos, rot * Quat::from_rotation_x(core::f32::consts::FRAC_PI_2)),
+            ring_radius,
+            Color::srgb(0.25, 0.85, 0.35),
+        );
+        // Roll (Z-axis ring - Blue)
         gizmos.circle(
             Isometry3d::new(pos, rot),
-            0.9,
-            Color::srgba(0.96, 0.62, 0.04, 0.7),
+            ring_radius,
+            Color::srgb(0.25, 0.65, 0.98),
         );
     }
 }

@@ -23,7 +23,20 @@ pub struct DragDropPlugin;
 
 impl Plugin for DragDropPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, handle_file_drag_and_drop);
+        app.add_systems(Update, handle_file_drag_and_drop)
+            .add_observer(on_scene_instance_ready);
+    }
+}
+
+/// Whenever a glTF scene hierarchy finishes spawning into the world,
+/// mark all descendants as SceneEntity so viewport picking and hierarchy reflect them.
+fn on_scene_instance_ready(
+    ready: On<bevy::world_serialization::WorldInstanceReady>,
+    children_query: Query<&Children>,
+    mut commands: Commands,
+) {
+    for child in children_query.iter_descendants(ready.entity) {
+        commands.entity(child).insert(crate::scene::SceneEntity);
     }
 }
 

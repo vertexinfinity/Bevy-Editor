@@ -15,6 +15,30 @@ use bevy::{
     prelude::*,
 };
 
+fn setup_editor_fonts(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut default_font_source: ResMut<bevy::text::DefaultFontSource>,
+) {
+    let symbol_handle: Handle<Font> = asset_server.load("fonts/seguisym.ttf");
+    let emoji_handle: Handle<Font> = asset_server.load("fonts/seguiemj.ttf");
+    let lucide_handle: Handle<Font> = asset_server.load("fonts/lucide.ttf");
+
+    // Configure the default font chain with Segoe UI Symbol & Emoji fallback
+    default_font_source.0 = bevy::text::FontSource::List(vec![
+        bevy::text::FontSource::Default,
+        bevy::text::FontSource::Handle(symbol_handle.clone()),
+        bevy::text::FontSource::Handle(emoji_handle.clone()),
+        bevy::text::FontSource::Handle(lucide_handle.clone()),
+    ]);
+
+    commands.insert_resource(theme::EditorFonts {
+        symbol: symbol_handle,
+        emoji: emoji_handle,
+        lucide: lucide_handle,
+    });
+}
+
 pub struct EditorUiPlugin;
 
 impl Plugin for EditorUiPlugin {
@@ -44,11 +68,13 @@ impl Plugin for EditorUiPlugin {
             .add_message::<inspector::AddComponentKind>()
             // Global 3D scene picking observer
             .add_observer(inspector::select_entity_on_viewport_click)
-            // Startup UI systems
+            // PreStartup / Startup UI systems
+            .add_systems(PreStartup, setup_editor_fonts)
             .add_systems(
                 Startup,
                 (
                     menu::spawn_menu_bar,
+                    play_bar::spawn_play_bar,
                     tools_bar::spawn_tools_bar,
                     hierarchy::spawn_hierarchy_panel,
                     status_bar::spawn_status_bar,
@@ -56,6 +82,7 @@ impl Plugin for EditorUiPlugin {
                     inspector::spawn_inspector_panel,
                 ),
             )
+
             // Update UI systems
             .add_systems(
                 Update,

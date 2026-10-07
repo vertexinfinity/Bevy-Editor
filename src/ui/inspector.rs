@@ -163,7 +163,7 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
         ))
         .id();
 
-    // 1. Inspector Header (Always visible, contains Dock & Mode toggles)
+    // 1. Inspector Header (Draggable title bar for docking / moving)
     let header = commands
         .spawn((
             EditorInternal,
@@ -181,6 +181,81 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
             BorderColor::all(BORDER_SUBTLE),
             ChildOf(dock_root),
         ))
+        .observe(|_drag: On<bevy::picking::events::PointerDrag>,
+                  window: Query<&Window, With<bevy::window::PrimaryWindow>>,
+                  mut state: ResMut<InspectorState>,
+                  mut dock_query: Query<(&mut Node, &mut BorderColor), With<InspectorDockRoot>>| {
+            state.is_dragging = true;
+            if let Ok(win) = window.single() {
+                if let Some(cursor) = win.cursor_position() {
+                    let win_width = win.width();
+                    if let Ok((mut node, mut border)) = dock_query.single_mut() {
+                        *border = BorderColor::all(BORDER_ACCENT);
+                        if cursor.x < win_width * 0.35 {
+                            // Snap to Left Dock Zone
+                            node.left = px(0);
+                            node.right = Val::Auto;
+                            node.border = UiRect::right(px(1));
+                            state.dock_zone = PanelDockZone::Left;
+                        } else if cursor.x > win_width * 0.65 {
+                            // Snap to Right Dock Zone
+                            node.left = Val::Auto;
+                            node.right = px(0);
+                            node.border = UiRect::left(px(1));
+                            state.dock_zone = PanelDockZone::Right;
+                        } else {
+                            // Free floating
+                            let half_w = state.width * 0.5;
+                            node.left = px((cursor.x - half_w).clamp(10.0, win_width - state.width - 10.0));
+                            node.top = px((cursor.y - 15.0).clamp(40.0, win.height() - 200.0));
+                            node.right = Val::Auto;
+                            node.border = UiRect::all(px(1));
+                            state.dock_zone = PanelDockZone::Floating;
+                        }
+                    }
+                }
+            }
+        })
+        .observe(|_drag_end: On<bevy::picking::events::PointerDragEnd>,
+                  mut state: ResMut<InspectorState>,
+                  mut dock_query: Query<(&mut Node, &mut BorderColor), With<InspectorDockRoot>>,
+                  mut dock_label_query: Query<&mut Text, With<DockToggleLabel>>| {
+            state.is_dragging = false;
+            if let Ok((mut node, mut border)) = dock_query.single_mut() {
+                *border = BorderColor::all(BORDER_SUBTLE);
+                match state.dock_zone {
+                    PanelDockZone::Right => {
+                        node.left = Val::Auto;
+                        node.right = px(0);
+                        node.top = px(36);
+                        node.bottom = px(28);
+                        node.border = UiRect::left(px(1));
+                        node.border_radius = BorderRadius::ZERO;
+                    }
+                    PanelDockZone::Left => {
+                        node.left = px(0);
+                        node.right = Val::Auto;
+                        node.top = px(36);
+                        node.bottom = px(28);
+                        node.border = UiRect::right(px(1));
+                        node.border_radius = BorderRadius::ZERO;
+                    }
+                    PanelDockZone::Floating => {
+                        node.bottom = px(28);
+                        node.border = UiRect::all(px(1));
+                        node.border_radius = BorderRadius::all(px(6));
+                    }
+                }
+            }
+            if let Ok(mut label) = dock_label_query.single_mut() {
+                label.0 = match state.dock_zone {
+                    PanelDockZone::Right => "Dock Right".to_string(),
+                    PanelDockZone::Left => "Dock Left".to_string(),
+                    PanelDockZone::Floating => "Floating".to_string(),
+                };
+            }
+            info!("Inspector docked to {:?}", state.dock_zone);
+        })
         .id();
 
     // Header Title
@@ -188,7 +263,7 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
         EditorInternal,
         InspectorHeaderTitle,
         Pickable::IGNORE,
-        Text::new("Inspector"),
+        Text::new("Inspector ⠿"),
         TextFont {
             font_size: bevy::text::FontSize::Px(12.0),
             ..default()
@@ -831,15 +906,38 @@ pub fn select_entity_on_viewport_click(
     scene_entities: Query<(), With<crate::scene::SceneEntity>>,
     parent_query: Query<&ChildOf>,
     editor_internal: Query<(), With<EditorInternal>>,
+    gizmo_marker: Query<(), With<bevy::gizmos::transform_gizmo::TransformGizmoMeshMarker>>,
+    gizmo_root: Query<(), With<bevy::gizmos::transform_gizmo::TransformGizmoRoot>>,
+    gizmo_state: Option<Res<bevy::gizmos::transform_gizmo::TransformGizmoState>>,
     mut selection: ResMut<InspectorSelection>,
 ) {
     if click.button != PointerButton::Primary {
         return;
     }
 
-    // Do not select editor UI elements
-    if editor_internal.contains(click.entity) {
+    // Do not select editor UI elements or transform gizmo handles
+    if editor_internal.contains(click.entity)
+        || gizmo_marker.contains(click.entity)
+        || gizmo_root.contains(click.entity)
+    {
         return;
+    }
+
+    // If transform gizmo is actively being dragged or was just dragged, do not change selection
+    if let Some(state) = gizmo_state {
+        if state.active || state.axis.is_some() {
+            return;
+        }
+    }
+
+    // Check if clicked entity is a child of gizmo root
+    let mut curr_ancestor = click.entity;
+    while let Ok(child_of) = parent_query.get(curr_ancestor) {
+        let parent = child_of.parent();
+        if gizmo_root.contains(parent) || editor_internal.contains(parent) {
+            return;
+        }
+        curr_ancestor = parent;
     }
 
     // Resolve clicked entity or its ancestor marked with SceneEntity

@@ -54,3 +54,23 @@ pub const TEXT_PRIMARY: Color = Color::srgb(0.97, 0.98, 1.0);
 pub const TEXT_SECONDARY: Color = Color::srgb(0.58, 0.64, 0.72);
 /// Darker slate for shortcuts, badges, and disabled states
 pub const TEXT_MUTED: Color = Color::srgb(0.38, 0.44, 0.52);
+
+/// Loaded font assets with rich symbol & emoji coverage
+#[derive(Resource, Clone, Debug)]
+pub struct EditorFonts {
+    pub symbol: Handle<Font>,
+    pub emoji: Handle<Font>,
+    pub lucide: Handle<Font>,
+}
+
+impl EditorFonts {
+    /// Helper to create a TextFont with symbol font support
+    pub fn font_size(&self, px: f32) -> TextFont {
+        TextFont {
+            font: self.symbol.clone().into(),
+            font_size: bevy::text::FontSize::Px(px),
+            ..default()
+        }
+    }
+}
+

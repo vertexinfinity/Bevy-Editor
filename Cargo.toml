@@ -33,6 +33,7 @@ bevy = { path = "../Engine/bevy", default-features = true, features = [
     "tga",
     "ktx2",
     "dds",
+    "bevy_gizmos_render",
 ] }
 rfd = "0.15"
 serde = { version = "1", features = ["derive"] }
