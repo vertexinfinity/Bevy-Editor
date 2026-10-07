@@ -14,6 +14,7 @@ graph TD
     App --> ScenePlugin[SceneManagerPlugin]
     App --> UIPlugin[EditorUiPlugin]
     App --> ExportPlugin[ExportPlugin]
+    App --> RemotePlugin[EditorRemotePlugin - BRP/JSON-RPC]
 
     subgraph "Core Subsystems"
         CorePlugin --> ToolReg[ToolRegistry]
@@ -21,6 +22,14 @@ graph TD
         CorePlugin --> CmdHistory[CommandHistory - Undo/Redo]
         CorePlugin --> EdSel[EditorSelection]
         CorePlugin --> PIE[PlayModeState - Snapshot/Rollback]
+    end
+
+    subgraph "Remote & MCP Control (BRP on :15703)"
+        RemotePlugin --> BrpStatus[editor/status]
+        RemotePlugin --> BrpTree[editor/scene_tree]
+        RemotePlugin --> BrpSelect[editor/select]
+        RemotePlugin --> BrpSpawn[editor/spawn_primitive]
+        RemotePlugin --> BrpPlay[editor/play_mode]
     end
 
     subgraph "Scene & Assets"

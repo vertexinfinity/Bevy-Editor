@@ -97,11 +97,12 @@ fn handle_file_drag_and_drop(
                 refresh_writer.write(RefreshAssetBrowserMessage);
 
                 // Calculate asset-relative path for Bevy AssetServer
-                let relative_path = if let Ok(stripped) = destination.strip_prefix("assets") {
+                let raw_relative = if let Ok(stripped) = destination.strip_prefix("assets") {
                     stripped.to_string_lossy().replace('\\', "/")
                 } else {
                     destination.to_string_lossy().replace('\\', "/")
                 };
+                let relative_path = raw_relative.trim_start_matches('/').to_string();
 
                 // If dropped over Project Explorer only, do not spawn into scene
                 if is_over_project_explorer {

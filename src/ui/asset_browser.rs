@@ -1,4 +1,4 @@
-//! Project Explorer / Asset Browser dockable panel.
+//! Project Explorer / Asset Browser dockable panel with breadcrumbs and folder navigation.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -35,6 +35,10 @@ pub struct AssetListContainer;
 #[derive(Component)]
 pub struct ExplorerCollapseLabel;
 
+/// Marker component for the directory breadcrumb title text.
+#[derive(Component)]
+pub struct DirectoryBreadcrumbLabel;
+
 /// Tracks hovered directory target for drag-and-drop file copy operations.
 #[derive(Resource, Debug, Clone)]
 pub struct HoveredAssetDirectory(pub PathBuf);
@@ -52,6 +56,10 @@ pub struct ToggleExplorerDockMessage;
 /// Message to request spawning an asset into the 3D scene.
 #[derive(Message, Clone)]
 pub struct SpawnAssetMessage(pub AssetItem);
+
+/// Message to navigate into a subfolder or back up to parent.
+#[derive(Message, Clone, Debug)]
+pub struct NavigateAssetFolderMessage(pub PathBuf);
 
 /// Message to request refreshing the file list.
 #[derive(Message, Clone, Copy, Debug)]
@@ -83,9 +91,9 @@ pub fn spawn_asset_browser(mut commands: Commands) {
                 position_type: PositionType::Absolute,
                 left: px(12),
                 bottom: px(36), // above bottom status bar
-                width: px(340),
+                width: px(360),
                 max_width: percent(45.0),
-                height: px(260),
+                height: px(270),
                 max_height: percent(50.0),
                 border: UiRect::all(px(1)),
                 border_radius: BorderRadius::all(px(6)),
@@ -130,10 +138,12 @@ pub fn spawn_asset_browser(mut commands: Commands) {
         ))
         .id();
 
+    // Directory breadcrumb title
     commands.spawn((
         EditorInternal,
+        DirectoryBreadcrumbLabel,
         Pickable::IGNORE,
-        Text::new("📁 Project Explorer"),
+        Text::new("📁 assets/"),
         TextFont {
             font_size: bevy::text::FontSize::Px(12.0),
             ..default()
@@ -142,7 +152,7 @@ pub fn spawn_asset_browser(mut commands: Commands) {
         ChildOf(header_left),
     ));
 
-    // Header Right controls (Refresh & Dock Collapse)
+    // Header Right controls (Up/Back, Refresh & Dock Collapse)
     let header_right = commands
         .spawn((
             EditorInternal,
@@ -155,6 +165,53 @@ pub fn spawn_asset_browser(mut commands: Commands) {
             ChildOf(header),
         ))
         .id();
+
+    // Up / Back Button
+    let up_btn = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                padding: UiRect::axes(px(6), px(2)),
+                border: UiRect::all(px(1)),
+                border_radius: BorderRadius::all(px(3)),
+                ..default()
+            },
+            BackgroundColor(Color::srgb(0.2, 0.2, 0.25)),
+            BorderColor::all(Color::srgb(0.3, 0.3, 0.38)),
+            ChildOf(header_right),
+        ))
+        .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(Color::srgb(0.28, 0.34, 0.46));
+            }
+        })
+        .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(Color::srgb(0.2, 0.2, 0.25));
+            }
+        })
+        .observe(|click: On<PointerClick>, state: Res<AssetBrowserState>, mut writer: MessageWriter<NavigateAssetFolderMessage>| {
+            if click.button == PointerButton::Primary {
+                if let Some(parent) = state.current_dir.parent() {
+                    if state.current_dir != Path::new("assets") {
+                        writer.write(NavigateAssetFolderMessage(parent.to_path_buf()));
+                    }
+                }
+            }
+        })
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new("⬆ Up"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(10.5),
+            ..default()
+        },
+        TextColor(Color::srgb(0.85, 0.85, 0.9)),
+        ChildOf(up_btn),
+    ));
 
     // Refresh Button
     let refresh_btn = commands
@@ -287,7 +344,7 @@ fn populate_asset_list(commands: &mut Commands, parent: Entity, current_dir: &Pa
         commands.spawn((
             EditorInternal,
             Pickable::IGNORE,
-            Text::new("No files in assets/ - Drag .glb/.gltf here to import"),
+            Text::new("Folder is empty - Drag .glb/.gltf here to import"),
             TextFont {
                 font_size: bevy::text::FontSize::Px(11.0),
                 ..default()
@@ -311,15 +368,15 @@ fn populate_asset_list(commands: &mut Commands, parent: Entity, current_dir: &Pa
             "📄"
         };
 
-        let label = format!("{icon} {name}");
+        let label = if is_dir { format!("{icon} {name}/") } else { format!("{icon} {name}") };
         let row_path = path.clone();
-        let hover_dir_path = if is_dir { path.clone() } else { PathBuf::from("assets/models") };
+        let hover_dir_path = if is_dir { path.clone() } else { current_dir.to_path_buf() };
 
         let row = commands
             .spawn((
                 EditorInternal,
                 AssetItem {
-                    file_path: row_path,
+                    file_path: row_path.clone(),
                     file_name: name.clone(),
                     is_dir,
                 },
@@ -343,10 +400,16 @@ fn populate_asset_list(commands: &mut Commands, parent: Entity, current_dir: &Pa
                     *bg = BackgroundColor(Color::srgb(0.18, 0.18, 0.22));
                 }
             })
-            .observe(|click: On<PointerClick>, query: Query<&AssetItem>, mut writer: MessageWriter<SpawnAssetMessage>| {
+            .observe(move |click: On<PointerClick>, query: Query<&AssetItem>, mut spawn_writer: MessageWriter<SpawnAssetMessage>, mut nav_writer: MessageWriter<NavigateAssetFolderMessage>| {
                 if click.button == PointerButton::Primary {
                     if let Ok(item) = query.get(click.entity) {
-                        writer.write(SpawnAssetMessage(item.clone()));
+                        if item.is_dir {
+                            // Click directory: navigate into it!
+                            nav_writer.write(NavigateAssetFolderMessage(item.file_path.clone()));
+                        } else {
+                            // Click file: spawn into 3D scene!
+                            spawn_writer.write(SpawnAssetMessage(item.clone()));
+                        }
                     }
                 }
             })
@@ -366,14 +429,16 @@ fn populate_asset_list(commands: &mut Commands, parent: Entity, current_dir: &Pa
     }
 }
 
-/// Handles toggling Project Explorer dock collapse and refresh requests.
+/// Handles toggling Project Explorer dock collapse, folder navigation, and refresh requests.
 pub fn handle_explorer_dock_and_refresh(
     mut toggle_msgs: MessageReader<ToggleExplorerDockMessage>,
     mut refresh_msgs: MessageReader<RefreshAssetBrowserMessage>,
+    mut nav_msgs: MessageReader<NavigateAssetFolderMessage>,
     mut state: ResMut<AssetBrowserState>,
     mut dock_query: Query<&mut Node, With<ProjectExplorerDockRoot>>,
     mut list_query: Query<&mut Node, (With<AssetListContainer>, Without<ProjectExplorerDockRoot>)>,
-    mut collapse_label_query: Query<&mut Text, With<ExplorerCollapseLabel>>,
+    mut collapse_label_query: Query<&mut Text, (With<ExplorerCollapseLabel>, Without<DirectoryBreadcrumbLabel>)>,
+    mut breadcrumb_query: Query<&mut Text, (With<DirectoryBreadcrumbLabel>, Without<ExplorerCollapseLabel>)>,
     list_container_query: Query<Entity, With<AssetListContainer>>,
     children_query: Query<&Children>,
     mut commands: Commands,
@@ -388,12 +453,17 @@ pub fn handle_explorer_dock_and_refresh(
         should_refresh = true;
     }
 
+    for nav in nav_msgs.read() {
+        state.current_dir = nav.0.clone();
+        should_refresh = true;
+    }
+
     if state.is_changed() {
         if let Ok(mut dock_node) = dock_query.single_mut() {
             if state.is_collapsed {
                 dock_node.height = px(30);
             } else {
-                dock_node.height = px(260);
+                dock_node.height = px(270);
             }
         }
 
@@ -407,6 +477,11 @@ pub fn handle_explorer_dock_and_refresh(
 
         if let Ok(mut label) = collapse_label_query.single_mut() {
             label.0 = if state.is_collapsed { "▲".to_string() } else { "▼".to_string() };
+        }
+
+        if let Ok(mut breadcrumb) = breadcrumb_query.single_mut() {
+            let path_str = state.current_dir.to_string_lossy().replace('\\', "/");
+            breadcrumb.0 = format!("📁 {path_str}/");
         }
     }
 
@@ -437,14 +512,21 @@ pub fn handle_spawn_asset_messages(
         }
 
         let ext = item.file_path.extension().and_then(|s| s.to_str()).unwrap_or_default().to_lowercase();
-        let path_str = item.file_path.to_string_lossy().to_string();
+        // Convert to asset-relative path
+        let relative_path = if let Ok(stripped) = item.file_path.strip_prefix("assets") {
+            stripped.to_string_lossy().replace('\\', "/")
+        } else {
+            item.file_path.to_string_lossy().replace('\\', "/")
+        };
+        let clean_path = relative_path.trim_start_matches('/').to_string();
 
         match ext.as_str() {
             "glb" | "gltf" => {
+                info!("Spawning model from Explorer: {}", clean_path);
                 commands.spawn((
                     crate::scene::SceneEntity,
                     Name::new(item.file_name.clone()),
-                    WorldAssetRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(path_str))),
+                    WorldAssetRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(clean_path))),
                     Transform::IDENTITY,
                 ));
                 *export_status = ExportStatus::InProgress {
@@ -453,10 +535,11 @@ pub fn handle_spawn_asset_messages(
                 };
             }
             "ron" | "bsn" => {
+                info!("Loading scene from Explorer: {}", clean_path);
                 commands.spawn((
                     crate::scene::SceneEntity,
                     Name::new(format!("Scene: {}", item.file_name)),
-                    DynamicWorldRoot(asset_server.load(path_str)),
+                    DynamicWorldRoot(asset_server.load(clean_path)),
                     Transform::IDENTITY,
                 ));
                 *export_status = ExportStatus::InProgress {

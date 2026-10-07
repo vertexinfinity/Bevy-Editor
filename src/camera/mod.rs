@@ -52,8 +52,45 @@ pub struct EditorCameraPlugin;
 impl Plugin for EditorCameraPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup_editor_camera)
-            .add_systems(Update, update_fly_camera);
+            .add_systems(Update, (update_fly_camera, handle_camera_focus_shortcut));
     }
+}
+
+/// Focus viewport camera on selected entity when `F` is pressed.
+fn handle_camera_focus_shortcut(
+    keys: Res<ButtonInput<KeyCode>>,
+    selection: Res<bevy::inspector::InspectorSelection>,
+    transforms: Query<&GlobalTransform>,
+    mut camera_query: Query<(&mut Transform, &mut FlyCamera), With<EditorCamera>>,
+) {
+    if !keys.just_pressed(KeyCode::KeyF) {
+        return;
+    }
+
+    let Some(selected_entity) = selection.0 else {
+        return;
+    };
+
+    let Ok(target_global) = transforms.get(selected_entity) else {
+        return;
+    };
+
+    let Ok((mut cam_transform, mut fly_cam)) = camera_query.single_mut() else {
+        return;
+    };
+
+    let target_pos = target_global.translation();
+    let offset = Vec3::new(0.0, 3.5, 7.0);
+    let new_cam_pos = target_pos + offset;
+
+    cam_transform.translation = new_cam_pos;
+    cam_transform.look_at(target_pos, Vec3::Y);
+
+    let dir = (target_pos - new_cam_pos).normalize();
+    fly_cam.pitch = dir.y.asin().clamp(-1.4, 1.4);
+    fly_cam.yaw = (-dir.x).atan2(-dir.z);
+
+    info!("Focused camera on selected entity: {:?}", selected_entity);
 }
 
 fn setup_editor_camera(mut commands: Commands) {

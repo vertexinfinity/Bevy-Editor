@@ -4,6 +4,7 @@ mod camera;
 mod core;
 mod export;
 mod project;
+mod remote;
 mod scene;
 mod ui;
 
@@ -33,6 +34,7 @@ fn main() {
             scene::SceneManagerPlugin,
             ui::EditorUiPlugin,
             export::ExportPlugin,
+            remote::EditorRemotePlugin::default(),
         ))
         .run();
 }

@@ -30,6 +30,7 @@ impl Plugin for EditorUiPlugin {
             .add_message::<asset_browser::SpawnAssetMessage>()
             .add_message::<asset_browser::ToggleExplorerDockMessage>()
             .add_message::<asset_browser::RefreshAssetBrowserMessage>()
+            .add_message::<asset_browser::NavigateAssetFolderMessage>()
             .add_message::<inspector::ToggleDebugModeMessage>()
             .add_message::<inspector::ToggleDockMessage>()
             .add_message::<inspector::ToggleCoordModeMessage>()

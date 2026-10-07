@@ -37,6 +37,8 @@ Bevy-Editor (src/)
 ├── project/                  # Standalone Project Creation
 │   ├── mod.rs                # Project module entry
 │   └── scaffold.rs           # Zero-error standalone Bevy game generator (Cargo.toml + main.rs)
+├── remote/                   # Remote BRP & MCP Protocol Subsystem (JSON-RPC on port 15703)
+│   └── mod.rs                # editor/status, editor/scene_tree, editor/select, editor/spawn_primitive
 └── export/                   # Multi-Platform Exporters
     ├── mod.rs                # ExportPlugin, Exporter trait, ExportStatus tracking
     ├── android.rs            # Android Gradle / NDK packaging pipeline
@@ -73,5 +75,6 @@ Bevy-Editor (src/)
 | **UI / Tools** | [`src/ui/tools_bar.rs`](file:///D:/Repos/Bevy/Bevy-Editor/src/ui/tools_bar.rs) | `ToolBtnMarker`, `spawn_tools_bar` | Floating viewport tool bar with tool active state highlights | 🟢 Confirmed |
 | **UI / Mod** | [`src/ui/mod.rs`](file:///D:/Repos/Bevy/Bevy-Editor/src/ui/mod.rs) | `EditorUiPlugin` | Aggregates all UI panels, message types, and global picking observers | 🟢 Confirmed |
 | **Project / Gen** | [`src/project/scaffold.rs`](file:///D:/Repos/Bevy/Bevy-Editor/src/project/scaffold.rs) | `ProjectScaffolder` | Scaffolds clean standalone Bevy game projects with zero editor dependencies | 🟢 Confirmed |
+| **Remote / BRP** | [`src/remote/mod.rs`](file:///D:/Repos/Bevy/Bevy-Editor/src/remote/mod.rs) | `EditorRemotePlugin`, `status_handler`, `scene_tree_handler` | Loopback JSON-RPC BRP server on port 15703 for MCP agents and automation | 🟢 Confirmed |
 | **Export / Mod** | [`src/export/mod.rs`](file:///D:/Repos/Bevy/Bevy-Editor/src/export/mod.rs) | `Exporter`, `ExportStatus`, `ExportPlugin` | Extensible export pipeline and background task progress status | 🟢 Confirmed |
 | **Export / Platforms** | `src/export/*.rs` | `AndroidExporter`, `WindowsExporter`, `WebExporter`, `IosExporter` | Platform-specific export implementations | 🟢 Confirmed |
