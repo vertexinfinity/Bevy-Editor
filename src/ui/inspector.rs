@@ -9,6 +9,7 @@
 //! - Interactive Transform nudging (X/Y/Z translation, rotation, scale)
 //! - Add Component action buttons: ScriptComponent, SpinAnimation, Velocity, PointLight, GameplayTag
 
+use std::{fs, path::{Path, PathBuf}};
 use bevy::{
     ecs::message::{Message, MessageReader, MessageWriter},
     feathers::controls::{FeathersPane, FeathersSplitPane, FeathersSplitPaneHandle},
@@ -92,16 +93,16 @@ pub struct InspectorHeaderTitle;
 pub struct InspectorModeBtn;
 
 #[derive(Component)]
-pub struct PositionDisplayLabel;
-
-#[derive(Component)]
-pub struct RotationDisplayLabel;
-
-#[derive(Component)]
-pub struct ScaleDisplayLabel;
-
-#[derive(Component)]
 pub struct ComponentsBadgesLabel;
+
+#[derive(Component)]
+pub struct TransformAxisValue {
+    property: TransformProperty,
+    axis: TransformAxis,
+}
+
+#[derive(Component)]
+pub struct InspectorAddMenu;
 
 #[derive(Component)]
 pub struct ScriptPropsLabel;
@@ -122,6 +123,11 @@ pub struct SelectEntityMessage(pub Entity);
 
 #[derive(Message, Clone, Copy, Debug)]
 pub enum TransformNudgeAction {
+    AdjustAxis {
+        property: TransformProperty,
+        axis: TransformAxis,
+        delta: f32,
+    },
     TranslateX(f32),
     TranslateY(f32),
     TranslateZ(f32),
@@ -135,13 +141,40 @@ pub enum TransformNudgeAction {
     ResetScale,
 }
 
-#[derive(Message, Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TransformProperty {
+    Position,
+    Rotation,
+    Scale,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TransformAxis {
+    X,
+    Y,
+    Z,
+}
+
+#[derive(Message, Clone, Debug)]
 pub enum AddComponentKind {
     Script,
+    ScriptAsset(String),
+    MeshCube,
+    MeshSphere,
+    MeshPlane,
     SpinAnimation,
     Velocity,
     PointLight,
+    DirectionalLight,
+    SpotLight,
+    Camera3d,
     GameplayTag,
+}
+
+struct ScriptDirectory {
+    name: String,
+    scripts: Vec<(String, String)>,
+    directories: Vec<ScriptDirectory>,
 }
 
 #[derive(Message, Clone, Debug)]
@@ -693,140 +726,9 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
         ChildOf(reset_all_btn),
     ));
 
-    // 1. Position row & controls
-    let pos_row = commands
-        .spawn((
-            EditorInternal,
-            Node {
-                flex_direction: FlexDirection::Row,
-                justify_content: JustifyContent::SpaceBetween,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            ChildOf(transform_card),
-        ))
-        .id();
-
-    commands.spawn((
-        EditorInternal,
-        PositionDisplayLabel,
-        Pickable::IGNORE,
-        Text::new("Position: X: 0.00   Y: 0.00   Z: 0.00"),
-        TextFont {
-            font_size: bevy::text::FontSize::Px(FONT_SIZE_SMALL),
-            ..default()
-        },
-        TextColor(TEXT_SECONDARY),
-        ChildOf(pos_row),
-    ));
-
-    let pos_actions = commands
-        .spawn((
-            EditorInternal,
-            Node {
-                flex_direction: FlexDirection::Row,
-                column_gap: px(4),
-                ..default()
-            },
-            ChildOf(pos_row),
-        ))
-        .id();
-
-    spawn_nudge_btn(commands, pos_actions, "-X", TransformNudgeAction::TranslateX(-0.5));
-    spawn_nudge_btn(commands, pos_actions, "+X", TransformNudgeAction::TranslateX(0.5));
-    spawn_nudge_btn(commands, pos_actions, "-Y", TransformNudgeAction::TranslateY(-0.5));
-    spawn_nudge_btn(commands, pos_actions, "+Y", TransformNudgeAction::TranslateY(0.5));
-    spawn_nudge_btn(commands, pos_actions, "-Z", TransformNudgeAction::TranslateZ(-0.5));
-    spawn_nudge_btn(commands, pos_actions, "+Z", TransformNudgeAction::TranslateZ(0.5));
-    spawn_nudge_btn(commands, pos_actions, "↺", TransformNudgeAction::ResetPosition);
-
-    // 2. Rotation row & controls
-    let rot_row = commands
-        .spawn((
-            EditorInternal,
-            Node {
-                flex_direction: FlexDirection::Row,
-                justify_content: JustifyContent::SpaceBetween,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            ChildOf(transform_card),
-        ))
-        .id();
-
-    commands.spawn((
-        EditorInternal,
-        RotationDisplayLabel,
-        Pickable::IGNORE,
-        Text::new("Rotation: X: 0.0°   Y: 0.0°   Z: 0.0°"),
-        TextFont {
-            font_size: bevy::text::FontSize::Px(FONT_SIZE_SMALL),
-            ..default()
-        },
-        TextColor(TEXT_SECONDARY),
-        ChildOf(rot_row),
-    ));
-
-    let rot_actions = commands
-        .spawn((
-            EditorInternal,
-            Node {
-                flex_direction: FlexDirection::Row,
-                column_gap: px(4),
-                ..default()
-            },
-            ChildOf(rot_row),
-        ))
-        .id();
-
-    spawn_nudge_btn(commands, rot_actions, "-Y", TransformNudgeAction::RotateY(-15.0));
-    spawn_nudge_btn(commands, rot_actions, "+Y", TransformNudgeAction::RotateY(15.0));
-    spawn_nudge_btn(commands, rot_actions, "-X", TransformNudgeAction::RotateX(-15.0));
-    spawn_nudge_btn(commands, rot_actions, "+X", TransformNudgeAction::RotateX(15.0));
-    spawn_nudge_btn(commands, rot_actions, "↺", TransformNudgeAction::ResetRotation);
-
-    // 3. Scale row & controls
-    let scale_row = commands
-        .spawn((
-            EditorInternal,
-            Node {
-                flex_direction: FlexDirection::Row,
-                justify_content: JustifyContent::SpaceBetween,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            ChildOf(transform_card),
-        ))
-        .id();
-
-    commands.spawn((
-        EditorInternal,
-        ScaleDisplayLabel,
-        Pickable::IGNORE,
-        Text::new("Scale: X: 1.00   Y: 1.00   Z: 1.00"),
-        TextFont {
-            font_size: bevy::text::FontSize::Px(FONT_SIZE_SMALL),
-            ..default()
-        },
-        TextColor(TEXT_SECONDARY),
-        ChildOf(scale_row),
-    ));
-
-    let scale_actions = commands
-        .spawn((
-            EditorInternal,
-            Node {
-                flex_direction: FlexDirection::Row,
-                column_gap: px(4),
-                ..default()
-            },
-            ChildOf(scale_row),
-        ))
-        .id();
-
-    spawn_nudge_btn(commands, scale_actions, "-0.1", TransformNudgeAction::ScaleUniform(0.9));
-    spawn_nudge_btn(commands, scale_actions, "+0.1", TransformNudgeAction::ScaleUniform(1.1));
-    spawn_nudge_btn(commands, scale_actions, "↺", TransformNudgeAction::ResetScale);
+    spawn_transform_value_row(commands, transform_card, "Position", TransformProperty::Position);
+    spawn_transform_value_row(commands, transform_card, "Rotation", TransformProperty::Rotation);
+    spawn_transform_value_row(commands, transform_card, "Scale", TransformProperty::Scale);
 
     // C. Attached Game Components Card
     let comp_card = commands
@@ -962,67 +864,333 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
         ))
         .id();
 
-    commands.spawn((
-        EditorInternal,
-        Pickable::IGNORE,
-        Text::new("+ Add Component"),
-        TextFont {
-            font_size: bevy::text::FontSize::Px(FONT_SIZE_NORMAL),
-            ..default()
-        },
-        TextColor(TEXT_PRIMARY),
-        ChildOf(add_comp_card),
-    ));
+    spawn_add_comp_toggle(commands, add_comp_card);
 
-    let add_btns_grid = commands
+    let add_menu = commands
         .spawn((
             EditorInternal,
+            InspectorAddMenu,
             Node {
-                flex_direction: FlexDirection::Row,
-                flex_wrap: FlexWrap::Wrap,
-                row_gap: px(6),
-                column_gap: px(6),
+                display: Display::None,
+                width: percent(100),
+                flex_direction: FlexDirection::Column,
+                row_gap: px(2),
+                padding: UiRect::all(px(4)),
+                border: UiRect::all(px(1)),
+                border_radius: radius_card(),
                 ..default()
             },
+            BackgroundColor(BG_PANEL),
+            BorderColor::all(BORDER_SUBTLE),
             ChildOf(add_comp_card),
         ))
         .id();
 
-    spawn_add_comp_btn(commands, add_btns_grid, "+ Mesh", AddComponentKind::Script);
-    spawn_add_comp_btn(commands, add_btns_grid, "+ Light", AddComponentKind::PointLight);
-    spawn_add_comp_btn(commands, add_btns_grid, "+ Script", AddComponentKind::Script);
-    spawn_add_comp_btn(commands, add_btns_grid, "+ Spin Anim", AddComponentKind::SpinAnimation);
-    spawn_add_comp_btn(commands, add_btns_grid, "+ Velocity", AddComponentKind::Velocity);
-    spawn_add_comp_btn(commands, add_btns_grid, "+ Gameplay Tag", AddComponentKind::GameplayTag);
+    let bevy_section = spawn_add_tree_branch(commands, add_menu, "Bevy");
+    spawn_add_comp_btn(commands, bevy_section, "Mesh: Cube", AddComponentKind::MeshCube);
+    spawn_add_comp_btn(commands, bevy_section, "Mesh: Sphere", AddComponentKind::MeshSphere);
+    spawn_add_comp_btn(commands, bevy_section, "Mesh: Plane", AddComponentKind::MeshPlane);
+    spawn_add_comp_btn(commands, bevy_section, "Point Light", AddComponentKind::PointLight);
+    spawn_add_comp_btn(commands, bevy_section, "Directional Light", AddComponentKind::DirectionalLight);
+    spawn_add_comp_btn(commands, bevy_section, "Spot Light", AddComponentKind::SpotLight);
+    spawn_add_comp_btn(commands, bevy_section, "3D Camera", AddComponentKind::Camera3d);
+
+    let user_section = spawn_add_tree_branch(commands, add_menu, "User");
+    let user_components = spawn_add_tree_branch(commands, user_section, "User Components");
+    spawn_add_comp_btn(commands, user_components, "Script Component (default)", AddComponentKind::Script);
+    spawn_add_comp_btn(commands, user_components, "Spin Animation", AddComponentKind::SpinAnimation);
+    spawn_add_comp_btn(commands, user_components, "Velocity", AddComponentKind::Velocity);
+    spawn_add_comp_btn(commands, user_components, "Gameplay Tag", AddComponentKind::GameplayTag);
+
+    let (script_directories, root_scripts) = find_script_tree(Path::new("assets"));
+    if root_scripts.is_empty() && script_directories.is_empty() {
+        spawn_add_tree_label(commands, user_section, "No scripts found under assets/");
+    } else {
+        spawn_script_entries(commands, user_section, &root_scripts);
+        for directory in &script_directories {
+            spawn_script_directory(commands, user_section, directory);
+        }
+    }
 }
 
-fn spawn_nudge_btn(commands: &mut Commands, parent: Entity, label: &str, action: TransformNudgeAction) {
-    let btn = commands
+fn spawn_add_tree_branch(commands: &mut Commands, parent: Entity, label: &str) -> Entity {
+    let label = label.to_owned();
+    let row = commands
         .spawn((
             EditorInternal,
             Node {
-                padding: UiRect::axes(px(6), px(2)),
+                width: percent(100),
+                padding: UiRect::axes(px(8), px(4)),
+                border_radius: radius_button(),
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(BG_INPUT),
+            ChildOf(parent),
+        ))
+        .id();
+    let label_entity = spawn_add_tree_label(commands, row, &format!("[+] {label}"));
+    let contents = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                display: Display::None,
+                flex_direction: FlexDirection::Column,
+                row_gap: px(2),
+                padding: UiRect::left(px(10)),
+                ..default()
+            },
+            ChildOf(parent),
+        ))
+        .id();
+
+    commands.entity(row).observe(move |click: On<PointerClick>, mut nodes: Query<&mut Node>, mut texts: Query<&mut Text>| {
+        if click.button != PointerButton::Primary {
+            return;
+        }
+
+        if let Ok(mut node) = nodes.get_mut(contents) {
+            let is_open = node.display == Display::Flex;
+            node.display = if is_open { Display::None } else { Display::Flex };
+            if let Ok(mut text) = texts.get_mut(label_entity) {
+                text.0 = format!("[{}] {label}", if is_open { "+" } else { "-" });
+            }
+        }
+    });
+
+    contents
+}
+
+fn spawn_add_tree_label(commands: &mut Commands, parent: Entity, label: &str) -> Entity {
+    commands
+        .spawn((
+            EditorInternal,
+            Pickable::IGNORE,
+            Text::new(label),
+            TextFont {
+                font_size: bevy::text::FontSize::Px(11.0),
+                ..default()
+            },
+            TextColor(TEXT_PRIMARY),
+            ChildOf(parent),
+        ))
+        .id()
+}
+
+fn spawn_script_directory(commands: &mut Commands, parent: Entity, directory: &ScriptDirectory) {
+    let contents = spawn_add_tree_branch(commands, parent, &directory.name);
+    spawn_script_entries(commands, contents, &directory.scripts);
+    for child in &directory.directories {
+        spawn_script_directory(commands, contents, child);
+    }
+}
+
+fn spawn_script_entries(commands: &mut Commands, parent: Entity, scripts: &[(String, String)]) {
+    for (name, path) in scripts {
+        spawn_add_comp_btn(
+            commands,
+            parent,
+            name,
+            AddComponentKind::ScriptAsset(path.clone()),
+        );
+    }
+}
+
+fn spawn_transform_value_row(
+    commands: &mut Commands,
+    parent: Entity,
+    label: &str,
+    property: TransformProperty,
+) {
+    let row = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                flex_direction: FlexDirection::Column,
+                row_gap: px(3),
+                ..default()
+            },
+            ChildOf(parent),
+        ))
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new(label),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(FONT_SIZE_SMALL),
+            ..default()
+        },
+        TextColor(TEXT_SECONDARY),
+        ChildOf(row),
+    ));
+
+    let axes = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                flex_direction: FlexDirection::Row,
+                column_gap: px(8),
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            ChildOf(row),
+        ))
+        .id();
+
+    for (axis, label) in [(TransformAxis::X, "X"), (TransformAxis::Y, "Y"), (TransformAxis::Z, "Z")] {
+        let axis_cell = commands
+            .spawn((
+                EditorInternal,
+                Node {
+                    flex_direction: FlexDirection::Row,
+                    column_gap: px(3),
+                    align_items: AlignItems::Center,
+                    ..default()
+                },
+                ChildOf(axes),
+            ))
+            .id();
+
+        commands.spawn((
+            EditorInternal,
+            Pickable::IGNORE,
+            Text::new(label),
+            TextFont {
+                font_size: bevy::text::FontSize::Px(FONT_SIZE_SMALL),
+                ..default()
+            },
+            TextColor(TEXT_MUTED),
+            ChildOf(axis_cell),
+        ));
+
+        spawn_transform_axis_widget(commands, axis_cell, property, axis);
+    }
+}
+
+fn spawn_transform_axis_widget(
+    commands: &mut Commands,
+    parent: Entity,
+    property: TransformProperty,
+    axis: TransformAxis,
+) {
+    let step = match property {
+        TransformProperty::Position | TransformProperty::Scale => 0.1,
+        TransformProperty::Rotation => 1.0,
+    };
+
+    let widget = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                position_type: PositionType::Relative,
+                width: px(78),
+                height: px(24),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            ChildOf(parent),
+        ))
+        .id();
+
+    let value_field = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                width: px(50),
+                height: px(22),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
                 border: UiRect::all(px(1)),
                 border_radius: BorderRadius::all(px(3)),
                 ..default()
             },
             BackgroundColor(BG_INPUT),
             BorderColor::all(BORDER_SUBTLE),
+            ChildOf(widget),
+        ))
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        TransformAxisValue { property, axis },
+        Pickable::IGNORE,
+        Text::new("0.00"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(FONT_SIZE_SMALL),
+            ..default()
+        },
+        TextColor(TEXT_PRIMARY),
+        ChildOf(value_field),
+    ));
+
+    let left_arrow = spawn_transform_arrow(commands, widget, "‹", property, axis, -step, true);
+    let right_arrow = spawn_transform_arrow(commands, widget, "›", property, axis, step, false);
+
+    commands.entity(widget)
+        .observe(move |_over: On<PointerOver>, mut nodes: Query<&mut Node>| {
+            for arrow in [left_arrow, right_arrow] {
+                if let Ok(mut node) = nodes.get_mut(arrow) {
+                    node.display = Display::Flex;
+                }
+            }
+        })
+        .observe(move |_out: On<PointerOut>, mut nodes: Query<&mut Node>| {
+            for arrow in [left_arrow, right_arrow] {
+                if let Ok(mut node) = nodes.get_mut(arrow) {
+                    node.display = Display::None;
+                }
+            }
+        })
+        .observe(move |drag: On<bevy::picking::events::PointerDrag>, mut writer: MessageWriter<TransformNudgeAction>| {
+            if drag.button == PointerButton::Primary && drag.delta.x != 0.0 {
+                writer.write(TransformNudgeAction::AdjustAxis {
+                    property,
+                    axis,
+                    delta: drag.delta.x * step * 0.1,
+                });
+            }
+        });
+}
+
+fn spawn_transform_arrow(
+    commands: &mut Commands,
+    parent: Entity,
+    label: &str,
+    property: TransformProperty,
+    axis: TransformAxis,
+    delta: f32,
+    is_left: bool,
+) -> Entity {
+    let mut node = Node {
+        display: Display::None,
+        position_type: PositionType::Absolute,
+        top: px(1),
+        width: px(16),
+        height: px(22),
+        justify_content: JustifyContent::Center,
+        align_items: AlignItems::Center,
+        ..default()
+    };
+    if is_left {
+        node.left = px(0);
+    } else {
+        node.right = px(0);
+    }
+
+    let arrow = commands
+        .spawn((
+            EditorInternal,
+            node,
+            BackgroundColor(BG_HOVER),
             ChildOf(parent),
         ))
-        .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
-            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(BG_HOVER);
-            }
-        })
-        .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
-            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(BG_INPUT);
-            }
-        })
-        .observe(move |click: On<PointerClick>, mut writer: MessageWriter<TransformNudgeAction>| {
+        .observe(move |mut click: On<PointerClick>, mut writer: MessageWriter<TransformNudgeAction>| {
             if click.button == PointerButton::Primary {
-                writer.write(action);
+                click.propagate(false);
+                writer.write(TransformNudgeAction::AdjustAxis { property, axis, delta });
             }
         })
         .id();
@@ -1032,22 +1200,26 @@ fn spawn_nudge_btn(commands: &mut Commands, parent: Entity, label: &str, action:
         Pickable::IGNORE,
         Text::new(label),
         TextFont {
-            font_size: bevy::text::FontSize::Px(10.0),
+            font_size: bevy::text::FontSize::Px(14.0),
             ..default()
         },
-        TextColor(TEXT_SECONDARY),
-        ChildOf(btn),
+        TextColor(TEXT_PRIMARY),
+        ChildOf(arrow),
     ));
+
+    arrow
 }
 
-fn spawn_add_comp_btn(commands: &mut Commands, parent: Entity, label: &str, kind: AddComponentKind) {
-    let btn = commands
+fn spawn_add_comp_toggle(commands: &mut Commands, parent: Entity) {
+    let button = commands
         .spawn((
             EditorInternal,
             Node {
-                padding: UiRect::axes(px(8), px(4)),
+                width: percent(100),
+                padding: UiRect::axes(px(8), px(5)),
                 border: UiRect::all(px(1)),
-                border_radius: BorderRadius::all(px(3)),
+                border_radius: radius_button(),
+                align_items: AlignItems::Center,
                 ..default()
             },
             BackgroundColor(BG_INPUT),
@@ -1064,9 +1236,64 @@ fn spawn_add_comp_btn(commands: &mut Commands, parent: Entity, label: &str, kind
                 *bg = BackgroundColor(BG_INPUT);
             }
         })
-        .observe(move |click: On<PointerClick>, mut writer: MessageWriter<AddComponentKind>| {
+        .observe(|click: On<PointerClick>, mut menu_query: Query<&mut Node, With<InspectorAddMenu>>| {
             if click.button == PointerButton::Primary {
-                writer.write(kind);
+                if let Ok(mut node) = menu_query.single_mut() {
+                    node.display = if node.display == Display::None { Display::Flex } else { Display::None };
+                }
+            }
+        })
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new("Add Component  +"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(FONT_SIZE_NORMAL),
+            ..default()
+        },
+        TextColor(TEXT_PRIMARY),
+        ChildOf(button),
+    ));
+}
+
+fn spawn_add_comp_btn(
+    commands: &mut Commands,
+    parent: Entity,
+    label: &str,
+    kind: AddComponentKind,
+) {
+    let btn = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                width: percent(100),
+                padding: UiRect::axes(px(8), px(4)),
+                border_radius: radius_button(),
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(BG_PANEL),
+            ChildOf(parent),
+        ))
+        .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_HOVER);
+            }
+        })
+        .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_INPUT);
+            }
+        })
+        .observe(move |mut click: On<PointerClick>, mut writer: MessageWriter<AddComponentKind>, mut menu_query: Query<&mut Node, With<InspectorAddMenu>>| {
+            if click.button == PointerButton::Primary {
+                click.propagate(false);
+                writer.write(kind.clone());
+                if let Ok(mut node) = menu_query.get_mut(parent) {
+                    node.display = Display::None;
+                }
             }
         })
         .id();
@@ -1082,6 +1309,55 @@ fn spawn_add_comp_btn(commands: &mut Commands, parent: Entity, label: &str, kind
         TextColor(TEXT_PRIMARY),
         ChildOf(btn),
     ));
+}
+
+fn find_script_tree(root: &Path) -> (Vec<ScriptDirectory>, Vec<(String, String)>) {
+    fn visit(directory: &Path, root: &Path) -> Option<ScriptDirectory> {
+        let mut entries: Vec<PathBuf> = fs::read_dir(directory)
+            .ok()?
+            .flatten()
+            .map(|entry| entry.path())
+            .collect();
+        entries.sort_by_key(|path| path.file_name().map(|name| name.to_string_lossy().to_ascii_lowercase()));
+
+        let mut scripts = Vec::new();
+        let mut directories = Vec::new();
+        for path in entries {
+            if path.is_dir() {
+                if let Some(child) = visit(&path, root) {
+                    directories.push(child);
+                }
+            } else if path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| matches!(extension.to_ascii_lowercase().as_str(), "lua" | "rhai" | "rs"))
+            {
+                if let Ok(relative_path) = path.strip_prefix(root) {
+                    if let Some(name) = path.file_name() {
+                        scripts.push((
+                            name.to_string_lossy().into_owned(),
+                            relative_path.to_string_lossy().replace('\\', "/"),
+                        ));
+                    }
+                }
+            }
+        }
+
+        if scripts.is_empty() && directories.is_empty() {
+            return None;
+        }
+
+        Some(ScriptDirectory {
+            name: directory.file_name().unwrap_or_default().to_string_lossy().into_owned(),
+            scripts,
+            directories,
+        })
+    }
+
+    let Some(tree) = visit(root, root) else {
+        return (Vec::new(), Vec::new());
+    };
+    (tree.directories, tree.scripts)
 }
 
 fn spawn_script_prop_btn(commands: &mut Commands, parent: Entity, label: &str, action: ScriptPropAction) {
@@ -1318,6 +1594,23 @@ pub fn handle_transform_nudges(
 
     for nudge in nudges.read() {
         match *nudge {
+            TransformNudgeAction::AdjustAxis { property, axis, delta } => match property {
+                TransformProperty::Position => match axis {
+                    TransformAxis::X => transform.translation.x += delta,
+                    TransformAxis::Y => transform.translation.y += delta,
+                    TransformAxis::Z => transform.translation.z += delta,
+                },
+                TransformProperty::Rotation => match axis {
+                    TransformAxis::X => transform.rotate_local_x(delta.to_radians()),
+                    TransformAxis::Y => transform.rotate_local_y(delta.to_radians()),
+                    TransformAxis::Z => transform.rotate_local_z(delta.to_radians()),
+                },
+                TransformProperty::Scale => match axis {
+                    TransformAxis::X => transform.scale.x += delta,
+                    TransformAxis::Y => transform.scale.y += delta,
+                    TransformAxis::Z => transform.scale.z += delta,
+                },
+            },
             TransformNudgeAction::TranslateX(dx) => transform.translation.x += dx,
             TransformNudgeAction::TranslateY(dy) => transform.translation.y += dy,
             TransformNudgeAction::TranslateZ(dz) => transform.translation.z += dz,
@@ -1337,6 +1630,8 @@ pub fn handle_add_component_actions(
     mut actions: MessageReader<AddComponentKind>,
     selection: Res<InspectorSelection>,
     mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let Some(selected) = selection.0 else {
         return;
@@ -1344,9 +1639,43 @@ pub fn handle_add_component_actions(
 
     for action in actions.read() {
         match action {
+            AddComponentKind::MeshCube => {
+                let mesh = meshes.add(Cuboid::new(1.0, 1.0, 1.0));
+                let material = materials.add(StandardMaterial {
+                    base_color: Color::srgb(0.2, 0.7, 0.9),
+                    perceptual_roughness: 0.4,
+                    ..default()
+                });
+                commands.entity(selected).insert((Mesh3d(mesh), MeshMaterial3d(material)));
+            }
+            AddComponentKind::MeshSphere => {
+                let mesh = meshes.add(Sphere::new(0.6));
+                let material = materials.add(StandardMaterial {
+                    base_color: Color::srgb(0.9, 0.4, 0.2),
+                    perceptual_roughness: 0.3,
+                    ..default()
+                });
+                commands.entity(selected).insert((Mesh3d(mesh), MeshMaterial3d(material)));
+            }
+            AddComponentKind::MeshPlane => {
+                let mesh = meshes.add(Plane3d::default().mesh().size(2.0, 2.0));
+                let material = materials.add(StandardMaterial {
+                    base_color: Color::srgb(0.25, 0.65, 0.35),
+                    perceptual_roughness: 0.7,
+                    ..default()
+                });
+                commands.entity(selected).insert((Mesh3d(mesh), MeshMaterial3d(material)));
+            }
             AddComponentKind::Script => {
                 commands.entity(selected).insert(ScriptComponent::default());
                 info!("Added ScriptComponent to {:?}", selected);
+            }
+            AddComponentKind::ScriptAsset(script_file) => {
+                commands.entity(selected).insert(ScriptComponent {
+                    script_file: script_file.clone(),
+                    ..default()
+                });
+                info!("Attached script '{}' to {:?}", script_file, selected);
             }
             AddComponentKind::SpinAnimation => {
                 commands.entity(selected).insert(SpinAnimation::default());
@@ -1365,6 +1694,26 @@ pub fn handle_add_component_actions(
                     ..default()
                 });
                 info!("Added PointLight to {:?}", selected);
+            }
+            AddComponentKind::DirectionalLight => {
+                commands.entity(selected).insert(DirectionalLight {
+                    illuminance: 10_000.0,
+                    shadow_maps_enabled: true,
+                    ..default()
+                });
+                info!("Added DirectionalLight to {:?}", selected);
+            }
+            AddComponentKind::SpotLight => {
+                commands.entity(selected).insert(SpotLight {
+                    intensity: 1_500.0,
+                    range: 20.0,
+                    ..default()
+                });
+                info!("Added SpotLight to {:?}", selected);
+            }
+            AddComponentKind::Camera3d => {
+                commands.entity(selected).insert(Camera3d::default());
+                info!("Added Camera3d to {:?}", selected);
             }
             AddComponentKind::GameplayTag => {
                 commands.entity(selected).insert(GameplayTag { tag: "Interactable".to_string() });
@@ -1406,6 +1755,31 @@ pub fn handle_script_prop_actions(
 }
 
 /// Updates the clean transform inspector labels based on the currently selected entity.
+fn set_transform_axis_values(
+    axis_labels: &mut Query<(&TransformAxisValue, &mut Text), With<TransformAxisValue>>,
+    position: Vec3,
+    rotation: Vec3,
+    scale: Vec3,
+) {
+    for (axis_value, mut text) in axis_labels.iter_mut() {
+        let vector = match axis_value.property {
+            TransformProperty::Position => position,
+            TransformProperty::Rotation => rotation,
+            TransformProperty::Scale => scale,
+        };
+        let value = match axis_value.axis {
+            TransformAxis::X => vector.x,
+            TransformAxis::Y => vector.y,
+            TransformAxis::Z => vector.z,
+        };
+        text.0 = if axis_value.property == TransformProperty::Rotation {
+            format!("{value:.1}°")
+        } else {
+            format!("{value:.2}")
+        };
+    }
+}
+
 pub fn update_clean_transform_labels(
     selection: Res<InspectorSelection>,
     state: Res<InspectorState>,
@@ -1422,25 +1796,18 @@ pub fn update_clean_transform_labels(
         Option<&PointLight>,
         Option<&Visibility>,
     )>,
-    mut name_label: Query<&mut Text, (With<SelectedEntityLabel>, Without<PositionDisplayLabel>, Without<RotationDisplayLabel>, Without<ScaleDisplayLabel>, Without<ComponentsBadgesLabel>, Without<ScriptPropsLabel>)>,
-    mut pos_label: Query<&mut Text, (With<PositionDisplayLabel>, Without<SelectedEntityLabel>, Without<RotationDisplayLabel>, Without<ScaleDisplayLabel>, Without<ComponentsBadgesLabel>, Without<ScriptPropsLabel>)>,
-    mut rot_label: Query<&mut Text, (With<RotationDisplayLabel>, Without<SelectedEntityLabel>, Without<PositionDisplayLabel>, Without<ScaleDisplayLabel>, Without<ComponentsBadgesLabel>, Without<ScriptPropsLabel>)>,
-    mut scale_label: Query<&mut Text, (With<ScaleDisplayLabel>, Without<SelectedEntityLabel>, Without<PositionDisplayLabel>, Without<RotationDisplayLabel>, Without<ComponentsBadgesLabel>, Without<ScriptPropsLabel>)>,
-    mut badges_label: Query<&mut Text, (With<ComponentsBadgesLabel>, Without<SelectedEntityLabel>, Without<PositionDisplayLabel>, Without<RotationDisplayLabel>, Without<ScaleDisplayLabel>, Without<ScriptPropsLabel>)>,
-    mut script_label: Query<&mut Text, (With<ScriptPropsLabel>, Without<SelectedEntityLabel>, Without<PositionDisplayLabel>, Without<RotationDisplayLabel>, Without<ScaleDisplayLabel>, Without<ComponentsBadgesLabel>)>,
+    mut name_label: Query<&mut Text, (With<SelectedEntityLabel>, Without<TransformAxisValue>, Without<ComponentsBadgesLabel>, Without<ScriptPropsLabel>)>,
+    mut axis_labels: Query<(&TransformAxisValue, &mut Text), With<TransformAxisValue>>,
+    mut badges_label: Query<&mut Text, (With<ComponentsBadgesLabel>, Without<SelectedEntityLabel>, Without<TransformAxisValue>, Without<ScriptPropsLabel>)>,
+    mut script_label: Query<&mut Text, (With<ScriptPropsLabel>, Without<SelectedEntityLabel>, Without<TransformAxisValue>, Without<ComponentsBadgesLabel>)>,
 ) {
     let Ok(mut name_txt) = name_label.single_mut() else { return };
-    let Ok(mut pos_txt) = pos_label.single_mut() else { return };
-    let Ok(mut rot_txt) = rot_label.single_mut() else { return };
-    let Ok(mut scale_txt) = scale_label.single_mut() else { return };
     let Ok(mut badges_txt) = badges_label.single_mut() else { return };
     let Ok(mut script_txt) = script_label.single_mut() else { return };
 
     let Some(selected) = selection.0 else {
         name_txt.0 = "Selected: None (Click object in scene)".to_string();
-        pos_txt.0 = "Position: X: 0.00   Y: 0.00   Z: 0.00".to_string();
-        rot_txt.0 = "Rotation: X: 0.0°   Y: 0.0°   Z: 0.0°".to_string();
-        scale_txt.0 = "Scale: X: 1.00   Y: 1.00   Z: 1.00".to_string();
+        set_transform_axis_values(&mut axis_labels, Vec3::ZERO, Vec3::ZERO, Vec3::ONE);
         badges_txt.0 = "None".to_string();
         script_txt.0 = "No entity selected".to_string();
         return;
@@ -1448,6 +1815,7 @@ pub fn update_clean_transform_labels(
 
     let Ok((name, transform, global_transform, script, spin, vel, tag, mesh, dir_light, pt_light, vis)) = entities.get(selected) else {
         name_txt.0 = format!("Selected: {:?} (Despawned)", selected);
+        set_transform_axis_values(&mut axis_labels, Vec3::ZERO, Vec3::ZERO, Vec3::ONE);
         script_txt.0 = "Despawned".to_string();
         return;
     };
@@ -1489,9 +1857,7 @@ pub fn update_clean_transform_labels(
         (Vec3::ZERO, Vec3::ZERO, Vec3::ONE)
     };
 
-    pos_txt.0 = format!("Position: X: {:.2}   Y: {:.2}   Z: {:.2}", pos.x, pos.y, pos.z);
-    rot_txt.0 = format!("Rotation: X: {:.1}°   Y: {:.1}°   Z: {:.1}°", rot.x, rot.y, rot.z);
-    scale_txt.0 = format!("Scale: X: {:.2}   Y: {:.2}   Z: {:.2}", scale.x, scale.y, scale.z);
+    set_transform_axis_values(&mut axis_labels, pos, rot, scale);
 
     // Collect badges
     let mut badges = Vec::new();

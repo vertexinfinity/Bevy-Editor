@@ -50,6 +50,9 @@ pub struct HierarchyTitleGroup;
 pub struct HierarchyActionsRow;
 
 #[derive(Component)]
+pub struct HierarchyAddMenu;
+
+#[derive(Component)]
 pub struct HierarchyListContainer;
 
 #[derive(Component)]
@@ -81,7 +84,7 @@ pub enum SpawnPrimitiveKind {
 }
 
 #[derive(Message, Clone, Copy, Debug)]
-pub struct SpawnPrimitiveMessage(pub SpawnPrimitiveKind);
+pub struct SpawnPrimitiveMessage(pub SpawnPrimitiveKind, pub Option<Entity>);
 
 /// Spawns the Hierarchy dock panel on the left.
 pub fn spawn_hierarchy_panel(mut commands: Commands) {
@@ -275,19 +278,15 @@ pub fn spawn_hierarchy_panel(mut commands: Commands) {
         ChildOf(search_row),
     ));
 
-    // 3. Action Bar: Spawn Primitives Quick Buttons
+    // 3. Action Bar
     let actions_row = commands
         .spawn((
             EditorInternal,
             HierarchyActionsRow,
             Node {
-                height: px(30),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
+                flex_direction: FlexDirection::Column,
                 padding: UiRect::axes(px(8), px(2)),
-                column_gap: px(4),
                 border: UiRect::bottom(px(1)),
-                overflow: Overflow::clip(),
                 ..default()
             },
             BackgroundColor(BG_CARD),
@@ -296,13 +295,48 @@ pub fn spawn_hierarchy_panel(mut commands: Commands) {
         ))
         .id();
 
-    spawn_primitive_btn(&mut commands, actions_row, "+Cube", SpawnPrimitiveKind::Cube);
-    spawn_primitive_btn(&mut commands, actions_row, "+Sphere", SpawnPrimitiveKind::Sphere);
-    spawn_primitive_btn(&mut commands, actions_row, "+Light", SpawnPrimitiveKind::Light);
-    spawn_primitive_btn(&mut commands, actions_row, "+Empty", SpawnPrimitiveKind::Empty);
-    spawn_primitive_btn(&mut commands, actions_row, "Dup", SpawnPrimitiveKind::Duplicate);
-    spawn_primitive_btn(&mut commands, actions_row, "Del", SpawnPrimitiveKind::Delete);
-    spawn_primitive_btn(&mut commands, actions_row, "Unparent", SpawnPrimitiveKind::Unparent);
+    let action_buttons = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                height: px(26),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: px(4),
+                ..default()
+            },
+            ChildOf(actions_row),
+        ))
+        .id();
+
+    let add_menu = commands
+        .spawn((
+            EditorInternal,
+            HierarchyAddMenu,
+            Node {
+                display: Display::None,
+                flex_direction: FlexDirection::Column,
+                row_gap: px(2),
+                padding: UiRect::all(px(4)),
+                border: UiRect::all(px(1)),
+                border_radius: radius_card(),
+                ..default()
+            },
+            BackgroundColor(BG_PANEL),
+            BorderColor::all(BORDER_SUBTLE),
+            ChildOf(actions_row),
+        ))
+        .id();
+
+    spawn_hierarchy_add_toggle(&mut commands, action_buttons, add_menu);
+    spawn_primitive_btn(&mut commands, action_buttons, "Dup", SpawnPrimitiveKind::Duplicate);
+    spawn_primitive_btn(&mut commands, action_buttons, "Del", SpawnPrimitiveKind::Delete);
+    spawn_primitive_btn(&mut commands, action_buttons, "Unparent", SpawnPrimitiveKind::Unparent);
+
+    spawn_hierarchy_menu_item(&mut commands, add_menu, "Cube", SpawnPrimitiveKind::Cube);
+    spawn_hierarchy_menu_item(&mut commands, add_menu, "Sphere", SpawnPrimitiveKind::Sphere);
+    spawn_hierarchy_menu_item(&mut commands, add_menu, "Point Light", SpawnPrimitiveKind::Light);
+    spawn_hierarchy_menu_item(&mut commands, add_menu, "Empty Entity", SpawnPrimitiveKind::Empty);
 
     // 4. Entity List Container
     commands.spawn((
@@ -354,7 +388,7 @@ fn spawn_primitive_btn(
         })
         .observe(move |click: On<PointerClick>, mut writer: MessageWriter<SpawnPrimitiveMessage>| {
             if click.button == PointerButton::Primary {
-                writer.write(SpawnPrimitiveMessage(kind));
+                writer.write(SpawnPrimitiveMessage(kind, None));
             }
         })
         .id();
@@ -369,6 +403,106 @@ fn spawn_primitive_btn(
         },
         TextColor(TEXT_SECONDARY),
         ChildOf(btn),
+    ));
+}
+
+fn spawn_hierarchy_add_toggle(commands: &mut Commands, parent: Entity, menu: Entity) {
+    let button = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                padding: UiRect::axes(px(8), px(3)),
+                border: UiRect::all(px(1)),
+                border_radius: radius_button(),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+            BackgroundColor(BG_INPUT),
+            BorderColor::all(BORDER_SUBTLE),
+            ChildOf(parent),
+        ))
+        .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_HOVER);
+            }
+        })
+        .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_INPUT);
+            }
+        })
+        .observe(move |click: On<PointerClick>, mut menu_query: Query<&mut Node, With<HierarchyAddMenu>>| {
+            if click.button == PointerButton::Primary {
+                if let Ok(mut node) = menu_query.get_mut(menu) {
+                    node.display = if node.display == Display::None { Display::Flex } else { Display::None };
+                }
+            }
+        })
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new("+ Add"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(10.0),
+            ..default()
+        },
+        TextColor(TEXT_PRIMARY),
+        ChildOf(button),
+    ));
+}
+
+fn spawn_hierarchy_menu_item(
+    commands: &mut Commands,
+    parent: Entity,
+    label: &str,
+    kind: SpawnPrimitiveKind,
+) {
+    let button = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                width: percent(100),
+                padding: UiRect::axes(px(8), px(4)),
+                border_radius: radius_button(),
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(BG_PANEL),
+            ChildOf(parent),
+        ))
+        .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_HOVER);
+            }
+        })
+        .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_PANEL);
+            }
+        })
+        .observe(move |click: On<PointerClick>, mut writer: MessageWriter<SpawnPrimitiveMessage>, mut menu_query: Query<&mut Node, With<HierarchyAddMenu>>| {
+            if click.button == PointerButton::Primary {
+                writer.write(SpawnPrimitiveMessage(kind, None));
+                if let Ok(mut node) = menu_query.get_mut(parent) {
+                    node.display = Display::None;
+                }
+            }
+        })
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new(label),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(10.0),
+            ..default()
+        },
+        TextColor(TEXT_SECONDARY),
+        ChildOf(button),
     ));
 }
 
@@ -706,6 +840,47 @@ pub fn update_hierarchy_list(
             TextColor(TEXT_MUTED),
             ChildOf(right_group),
         ));
+
+        let delete_btn = commands
+            .spawn((
+                EditorInternal,
+                Node {
+                    padding: UiRect::axes(px(4), px(1)),
+                    border_radius: BorderRadius::all(px(2)),
+                    ..default()
+                },
+                BackgroundColor(BG_INPUT),
+                ChildOf(right_group),
+            ))
+            .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+                if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                    *bg = BackgroundColor(BG_HOVER);
+                }
+            })
+            .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+                if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                    *bg = BackgroundColor(BG_INPUT);
+                }
+            })
+            .observe(move |mut click: On<PointerClick>, mut writer: MessageWriter<SpawnPrimitiveMessage>| {
+                if click.button == PointerButton::Primary {
+                    click.propagate(false);
+                    writer.write(SpawnPrimitiveMessage(SpawnPrimitiveKind::Delete, Some(entity)));
+                }
+            })
+            .id();
+
+        commands.spawn((
+            EditorInternal,
+            Pickable::IGNORE,
+            Text::new("X"),
+            TextFont {
+                font_size: bevy::text::FontSize::Px(9.0),
+                ..default()
+            },
+            TextColor(TEXT_MUTED),
+            ChildOf(delete_btn),
+        ));
     }
 }
 
@@ -713,14 +888,14 @@ pub fn update_hierarchy_list(
 pub fn handle_spawn_primitives(
     world: &mut World,
 ) {
-    let requests: Vec<SpawnPrimitiveKind> = {
+    let requests: Vec<(SpawnPrimitiveKind, Option<Entity>)> = {
         let Some(mut messages) = world.get_resource_mut::<Messages<SpawnPrimitiveMessage>>() else {
             return;
         };
-        messages.drain().map(|m| m.0).collect()
+        messages.drain().map(|m| (m.0, m.1)).collect()
     };
 
-    for kind in requests {
+    for (kind, target) in requests {
         match kind {
             SpawnPrimitiveKind::Cube => {
                 let mut meshes = world.resource_mut::<Assets<Mesh>>();
@@ -799,11 +974,13 @@ pub fn handle_spawn_primitives(
                 info!("Spawned Empty Entity: {:?}", entity);
             }
             SpawnPrimitiveKind::Delete => {
-                if let Some(e) = world.resource::<InspectorSelection>().0 {
+                if let Some(e) = target.or(world.resource::<InspectorSelection>().0) {
                     if let Ok(ent) = world.get_entity_mut(e) {
                         ent.despawn();
                     }
-                    world.resource_mut::<InspectorSelection>().0 = None;
+                    if world.resource::<InspectorSelection>().0 == Some(e) {
+                        world.resource_mut::<InspectorSelection>().0 = None;
+                    }
                 }
             }
             SpawnPrimitiveKind::Duplicate => {

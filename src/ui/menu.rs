@@ -25,10 +25,11 @@ pub enum MenuAction {
     OpenScene,
     SaveScene,
     SaveAsScene,
-    ExportAndroid,
-    ExportWindows,
-    ExportWeb,
-    ExportIos,
+    ToggleBuildMenu,
+    BuildAndroid,
+    BuildWindows,
+    BuildWeb,
+    BuildIos,
 }
 
 #[derive(Message, Clone, Copy, Debug)]
@@ -74,6 +75,12 @@ pub struct SwitchWorkspaceMessage(pub WorkspacePreset);
 
 #[derive(Component)]
 pub struct WorkspaceSelectorLabel;
+
+#[derive(Resource, Default)]
+pub struct BuildMenuState(pub bool);
+
+#[derive(Component)]
+pub struct BuildMenuPanel;
 
 /// Spawns the top unified header and menu bar.
 pub fn spawn_menu_bar(mut commands: Commands, current_ws: Res<ActiveWorkspace>) {
@@ -179,11 +186,86 @@ pub fn spawn_menu_bar(mut commands: Commands, current_ws: Res<ActiveWorkspace>) 
         ))
         .id();
 
-    // Multi-Platform Export Action Pills
-    spawn_menu_button(&mut commands, right_group, "Android", MenuAction::ExportAndroid);
-    spawn_menu_button(&mut commands, right_group, "Windows", MenuAction::ExportWindows);
-    spawn_menu_button(&mut commands, right_group, "Web", MenuAction::ExportWeb);
-    spawn_menu_button(&mut commands, right_group, "iOS", MenuAction::ExportIos);
+    let build_button = commands
+        .spawn((
+            EditorInternal,
+            MenuAction::ToggleBuildMenu,
+            Node {
+                position_type: PositionType::Relative,
+                padding: UiRect::axes(px(10), px(3)),
+                border: UiRect::all(px(1)),
+                border_radius: radius_button(),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(ACCENT_CYAN_DIM),
+            BorderColor::all(BORDER_ACCENT),
+            ChildOf(right_group),
+        ))
+        .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_HOVER);
+            }
+        })
+        .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(ACCENT_CYAN_DIM);
+            }
+        })
+        .observe(|click: On<PointerClick>, query: Query<&MenuAction>, mut writer: MessageWriter<MenuActionMessage>| {
+            if click.button == PointerButton::Primary {
+                if let Ok(action) = query.get(click.entity) {
+                    writer.write(MenuActionMessage(*action));
+                }
+            }
+        })
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new("Build  v"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(11.5),
+            weight: FontWeight::SEMIBOLD,
+            ..default()
+        },
+        TextColor(TEXT_PRIMARY),
+        ChildOf(build_button),
+    ));
+
+    let build_menu = commands
+        .spawn((
+            EditorInternal,
+            BuildMenuPanel,
+            Node {
+                position_type: PositionType::Absolute,
+                top: px(32),
+                left: px(0),
+                width: px(136),
+                padding: UiRect::all(px(4)),
+                flex_direction: FlexDirection::Column,
+                row_gap: px(3),
+                display: Display::None,
+                border: UiRect::all(px(1)),
+                border_radius: radius_panel(),
+                ..default()
+            },
+            BackgroundColor(BG_CARD),
+            BorderColor::all(BORDER_SUBTLE),
+            ChildOf(build_button),
+        ))
+        .id();
+
+    for (label, action) in [
+        ("Windows", MenuAction::BuildWindows),
+        ("Android", MenuAction::BuildAndroid),
+        ("Web", MenuAction::BuildWeb),
+        ("iOS", MenuAction::BuildIos),
+    ] {
+        spawn_build_target_button(&mut commands, build_menu, label, action);
+    }
 
     // MCP Live Status Pill
     let mcp_pill = commands
@@ -326,6 +408,66 @@ fn spawn_menu_button(
 #[derive(Component)]
 pub struct McpStatusLabel;
 
+fn spawn_build_target_button(
+    commands: &mut Commands,
+    parent: Entity,
+    label: &'static str,
+    action: MenuAction,
+) {
+    let button = commands
+        .spawn((
+            EditorInternal,
+            action,
+            Node {
+                width: percent(100.0),
+                padding: UiRect::axes(px(8), px(6)),
+                border_radius: radius_button(),
+                ..default()
+            },
+            BackgroundColor(BG_INPUT),
+            ChildOf(parent),
+        ))
+        .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_HOVER);
+            }
+        })
+        .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_INPUT);
+            }
+        })
+        .observe(|click: On<PointerClick>, query: Query<&MenuAction>, mut writer: MessageWriter<MenuActionMessage>| {
+            if click.button == PointerButton::Primary {
+                if let Ok(action) = query.get(click.entity) {
+                    writer.write(MenuActionMessage(*action));
+                }
+            }
+        })
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new(label),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(11.5),
+            ..default()
+        },
+        TextColor(TEXT_PRIMARY),
+        ChildOf(button),
+    ));
+}
+
+pub fn update_build_menu_visibility(
+    state: Res<BuildMenuState>,
+    mut panels: Query<&mut Node, With<BuildMenuPanel>>,
+) {
+    for mut node in &mut panels {
+        node.display = if state.0 { Display::Flex } else { Display::None };
+    }
+}
+
 
 /// Handles executing menu actions received via MenuActionMessage.
 pub fn handle_menu_actions(world: &mut World) {
@@ -340,13 +482,15 @@ pub fn handle_menu_actions(world: &mut World) {
         match action {
             MenuAction::NewProject => {
                 if let Some(folder) = rfd::FileDialog::new().pick_folder() {
-                    let _ = crate::project::ProjectScaffolder::create_project(&folder, "MyBevyGame");
-                    if let Some(mut status) = world.get_resource_mut::<crate::export::ExportStatus>() {
-                        *status = crate::export::ExportStatus::Success {
-                            target: "Project Scaffolder".to_string(),
-                            message: "Created clean, zero-error standalone Bevy project".to_string(),
-                            path: folder,
-                        };
+                    if let Ok(project_dir) = crate::project::ProjectScaffolder::create_project(&folder, "MyBevyGame") {
+                        world.resource_mut::<crate::ui::hub::ActiveProject>().set_project_dir(project_dir.clone());
+                        if let Some(mut status) = world.get_resource_mut::<crate::export::ExportStatus>() {
+                            *status = crate::export::ExportStatus::Success {
+                                target: "Project Scaffolder".to_string(),
+                                message: "Created clean, zero-error standalone Bevy project".to_string(),
+                                path: project_dir,
+                            };
+                        }
                     }
                 }
             }
@@ -397,16 +541,21 @@ pub fn handle_menu_actions(world: &mut World) {
             MenuAction::SaveAsScene => {
                 save_as_dialog(world);
             }
-            MenuAction::ExportAndroid => {
+            MenuAction::ToggleBuildMenu => {
+                if let Some(mut state) = world.get_resource_mut::<BuildMenuState>() {
+                    state.0 = !state.0;
+                }
+            }
+            MenuAction::BuildAndroid => {
                 trigger_export(world, "android");
             }
-            MenuAction::ExportWindows => {
+            MenuAction::BuildWindows => {
                 trigger_export(world, "windows");
             }
-            MenuAction::ExportWeb => {
+            MenuAction::BuildWeb => {
                 trigger_export(world, "web");
             }
-            MenuAction::ExportIos => {
+            MenuAction::BuildIos => {
                 trigger_export(world, "ios");
             }
         }
@@ -429,30 +578,43 @@ fn save_as_dialog(world: &mut World) {
 }
 
 fn trigger_export(world: &mut World, target_id: &str) {
-    let project_dir = if target_id == "windows" {
-        rfd::FileDialog::new()
-            .set_title("Select the Cargo project to build")
-            .pick_folder()
-    } else {
-        None
-    };
-    if target_id == "windows" && project_dir.is_none() {
-        return;
+    if let Some(mut state) = world.get_resource_mut::<BuildMenuState>() {
+        state.0 = false;
     }
 
-    if let Some(output_dir) = rfd::FileDialog::new()
-        .set_title("Select the export output folder")
-        .pick_folder()
-    {
-        let current_scene_path = world.resource::<CurrentScene>().file_path.clone();
-        world.write_message(RequestExportMessage {
-            target_id: target_id.to_string(),
-            output_dir,
-            project_name: "BevyGame".to_string(),
-            project_dir,
-            scene_path: current_scene_path,
-        });
+    let mut project = world.resource::<crate::ui::hub::ActiveProject>().clone();
+    if project.project_dir.is_none() {
+        let Some(project_dir) = rfd::FileDialog::new()
+            .set_title("Select the Cargo project to build")
+            .pick_folder()
+        else {
+            return;
+        };
+        if !project_dir.join("Cargo.toml").is_file() {
+            warn!("Selected project folder does not contain Cargo.toml: {}", project_dir.display());
+            return;
+        }
+        project.set_project_dir(project_dir);
+        *world.resource_mut::<crate::ui::hub::ActiveProject>() = project.clone();
     }
+
+    let project_dir = project.project_dir.expect("project directory was initialized");
+    if !project_dir.join("Cargo.toml").is_file() {
+        warn!("Active project does not contain Cargo.toml: {}", project_dir.display());
+        return;
+    }
+    let output_dir = project.build_dir.unwrap_or_else(|| {
+        let parent = project_dir.parent().unwrap_or(&project_dir);
+        parent.join(format!("{}-build", project.name.as_deref().unwrap_or("BevyGame")))
+    });
+    let current_scene_path = world.resource::<CurrentScene>().file_path.clone();
+    world.write_message(RequestExportMessage {
+        target_id: target_id.to_string(),
+        output_dir,
+        project_name: project.name.unwrap_or_else(|| "BevyGame".to_string()),
+        project_dir: Some(project_dir),
+        scene_path: current_scene_path,
+    });
 }
 
 /// State tracking live commands received from the MCP Server bridge file.

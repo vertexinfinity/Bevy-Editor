@@ -52,6 +52,8 @@ impl Plugin for EditorUiPlugin {
 
         app.insert_resource(UiTheme(create_dark_theme()))
             .init_state::<EditorAppState>()
+            .init_resource::<hub::ActiveProject>()
+            .init_resource::<menu::BuildMenuState>()
             .init_resource::<menu::ActiveWorkspace>()
             .init_resource::<hierarchy::HierarchyState>()
             .init_resource::<inspector::InspectorState>()
@@ -81,6 +83,10 @@ impl Plugin for EditorUiPlugin {
             .add_systems(OnEnter(EditorAppState::ProjectHub), hub::spawn_project_hub)
             .add_systems(OnExit(EditorAppState::ProjectHub), hub::despawn_project_hub)
             .add_systems(
+                Update,
+                hub::update_project_path_labels.run_if(in_state(EditorAppState::ProjectHub)),
+            )
+            .add_systems(
                 OnEnter(EditorAppState::InEditor),
                 (
                     menu::spawn_menu_bar,
@@ -98,6 +104,7 @@ impl Plugin for EditorUiPlugin {
                 Update,
                 (
                     menu::handle_menu_actions,
+                    menu::update_build_menu_visibility,
                     menu::handle_switch_workspace,
                     menu::update_mcp_bridge_status,
                     tools_bar::update_active_tool_highlight,

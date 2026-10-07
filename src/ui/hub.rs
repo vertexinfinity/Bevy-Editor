@@ -26,6 +26,33 @@ pub enum EditorAppState {
     InEditor,
 }
 
+#[derive(Resource, Debug, Clone, Default)]
+pub struct ActiveProject {
+    pub project_dir: Option<PathBuf>,
+    pub build_dir: Option<PathBuf>,
+    pub name: Option<String>,
+}
+
+impl ActiveProject {
+    pub fn set_project_dir(&mut self, project_dir: PathBuf) {
+        let name = project_dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("BevyGame")
+            .to_string();
+        let parent = project_dir.parent().unwrap_or(&project_dir);
+        self.build_dir = Some(parent.join(format!("{name}-build")));
+        self.project_dir = Some(project_dir);
+        self.name = Some(name);
+    }
+}
+
+#[derive(Component)]
+pub struct HubProjectPathLabel;
+
+#[derive(Component)]
+pub struct HubBuildPathLabel;
+
 /// Message fired to open a project from the hub.
 #[derive(Message, Clone, Debug)]
 pub struct OpenProjectMessage {
@@ -238,12 +265,14 @@ pub fn spawn_project_hub(mut commands: Commands) {
                 *bg = BackgroundColor(ACCENT_CYAN);
             }
         })
-        .observe(|click: On<PointerClick>, mut state: ResMut<NextState<EditorAppState>>| {
+        .observe(|click: On<PointerClick>, mut state: ResMut<NextState<EditorAppState>>, mut active_project: ResMut<ActiveProject>| {
             if click.button == PointerButton::Primary {
                 if let Some(folder) = rfd::FileDialog::new().pick_folder() {
-                    let _ = crate::project::ProjectScaffolder::create_project(&folder, "MyBevyGame");
+                    if let Ok(project_dir) = crate::project::ProjectScaffolder::create_project(&folder, "MyBevyGame") {
+                        active_project.set_project_dir(project_dir);
+                        state.set(EditorAppState::InEditor);
+                    }
                 }
-                state.set(EditorAppState::InEditor);
             }
         })
         .id();
@@ -287,10 +316,14 @@ pub fn spawn_project_hub(mut commands: Commands) {
                 *bg = BackgroundColor(BG_CARD);
             }
         })
-        .observe(|click: On<PointerClick>, mut state: ResMut<NextState<EditorAppState>>| {
+        .observe(|click: On<PointerClick>, mut state: ResMut<NextState<EditorAppState>>, mut active_project: ResMut<ActiveProject>| {
             if click.button == PointerButton::Primary {
-                let _ = rfd::FileDialog::new().pick_folder();
-                state.set(EditorAppState::InEditor);
+                if let Some(folder) = rfd::FileDialog::new().pick_folder() {
+                    if folder.join("Cargo.toml").is_file() {
+                        active_project.set_project_dir(folder);
+                        state.set(EditorAppState::InEditor);
+                    }
+                }
             }
         })
         .id();
@@ -305,6 +338,53 @@ pub fn spawn_project_hub(mut commands: Commands) {
         },
         TextColor(TEXT_PRIMARY),
         ChildOf(open_btn),
+    ));
+
+    let build_folder_btn = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                height: px(34),
+                padding: UiRect::axes(px(16), px(6)),
+                border: UiRect::all(px(1)),
+                border_radius: radius_button(),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(BG_CARD),
+            BorderColor::all(BORDER_SUBTLE),
+            ChildOf(actions_group),
+        ))
+        .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_HOVER);
+            }
+        })
+        .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_CARD);
+            }
+        })
+        .observe(|click: On<PointerClick>, mut active_project: ResMut<ActiveProject>| {
+            if click.button == PointerButton::Primary {
+                if let Some(folder) = rfd::FileDialog::new().set_title("Select build output folder").pick_folder() {
+                    active_project.build_dir = Some(folder);
+                }
+            }
+        })
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new("Build Folder..."),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(FONT_SIZE_NORMAL),
+            ..default()
+        },
+        TextColor(TEXT_PRIMARY),
+        ChildOf(build_folder_btn),
     ));
 
     // 2. Main Content Split: Left = Recent Projects (60%), Right = Templates (40%)
@@ -347,6 +427,32 @@ pub fn spawn_project_hub(mut commands: Commands) {
             ..default()
         },
         TextColor(TEXT_PRIMARY),
+        ChildOf(recents_section),
+    ));
+
+    commands.spawn((
+        EditorInternal,
+        HubProjectPathLabel,
+        Pickable::IGNORE,
+        Text::new("Project: Not selected"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(FONT_SIZE_SMALL),
+            ..default()
+        },
+        TextColor(TEXT_MUTED),
+        ChildOf(recents_section),
+    ));
+
+    commands.spawn((
+        EditorInternal,
+        HubBuildPathLabel,
+        Pickable::IGNORE,
+        Text::new("Build: Sibling folder (default)"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(FONT_SIZE_SMALL),
+            ..default()
+        },
+        TextColor(TEXT_MUTED),
         ChildOf(recents_section),
     ));
 
@@ -414,6 +520,7 @@ fn spawn_recent_project_card(
     parent: Entity,
     item: &RecentProjectItem,
 ) {
+    let project_dir = PathBuf::from(item.path);
     let card = commands
         .spawn((
             EditorInternal,
@@ -447,8 +554,9 @@ fn spawn_recent_project_card(
                 *border = BorderColor::all(BORDER_SUBTLE);
             }
         })
-        .observe(|click: On<PointerClick>, mut state: ResMut<NextState<EditorAppState>>| {
+        .observe(move |click: On<PointerClick>, mut state: ResMut<NextState<EditorAppState>>, mut active_project: ResMut<ActiveProject>| {
             if click.button == PointerButton::Primary {
+                active_project.set_project_dir(project_dir.clone());
                 state.set(EditorAppState::InEditor);
             }
         })
@@ -541,6 +649,27 @@ fn spawn_recent_project_card(
         TextColor(TEXT_SECONDARY),
         ChildOf(version_badge),
     ));
+}
+
+pub fn update_project_path_labels(
+    active_project: Res<ActiveProject>,
+    mut project_labels: Query<&mut Text, (With<HubProjectPathLabel>, Without<HubBuildPathLabel>)>,
+    mut build_labels: Query<&mut Text, (With<HubBuildPathLabel>, Without<HubProjectPathLabel>)>,
+) {
+    if !active_project.is_changed() {
+        return;
+    }
+
+    if let Ok(mut text) = project_labels.single_mut() {
+        text.0 = active_project.project_dir.as_ref()
+            .map(|path| format!("Project: {}", path.display()))
+            .unwrap_or_else(|| "Project: Not selected".to_string());
+    }
+    if let Ok(mut text) = build_labels.single_mut() {
+        text.0 = active_project.build_dir.as_ref()
+            .map(|path| format!("Build: {}", path.display()))
+            .unwrap_or_else(|| "Build: Sibling folder (default)".to_string());
+    }
 }
 
 fn spawn_template_card(

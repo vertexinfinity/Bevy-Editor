@@ -21,6 +21,14 @@ impl Exporter for AndroidExporter {
     fn export(&self, ctx: &ExportContext) -> Result<ExportResult, String> {
         let export_dir = ctx.output_dir.join("android");
         fs::create_dir_all(&export_dir).map_err(|e| format!("Failed to create export directory: {e}"))?;
+        let project_dir = ctx.project_dir.as_ref()
+            .ok_or_else(|| "Select a Cargo project to build".to_string())?
+            .canonicalize()
+            .map_err(|e| format!("Failed to resolve project directory: {e}"))?;
+        let manifest_path = project_dir.join("Cargo.toml");
+        if !manifest_path.is_file() {
+            return Err(format!("No Cargo.toml found in {}", project_dir.display()));
+        }
 
         // 1. Prepare assets directory inside the export bundle
         let assets_dir = export_dir.join("assets");
@@ -45,7 +53,9 @@ impl Exporter for AndroidExporter {
         if has_cargo_apk {
             // Run cargo-apk build
             let mut cmd = Command::new("cargo");
-            cmd.args(["apk", "build", "--target", "aarch64-linux-android"]);
+            cmd.current_dir(&project_dir)
+                .env("CARGO_TARGET_DIR", export_dir.join("target"))
+                .args(["apk", "build", "--target", "aarch64-linux-android"]);
             if ctx.release {
                 cmd.arg("--release");
             }
