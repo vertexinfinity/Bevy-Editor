@@ -27,3 +27,7 @@
      - Registered RPC methods: `editor/status`, `editor/scene_tree`, `editor/select`, `editor/spawn_primitive`, `editor/play_mode`.
      - Enables MCP agents and automated tools to query scene state, select objects, and spawn primitives programmatically.
   5. **Subsystem Documentation**: Updated `wiki/overview/architecture.md`, `wiki/operations/file-registry.md`, and `TODO.md`.
+
+## [2026-10-07] - Enabled Complete glTF Texture Support (JPEG, WebP, KTX2, etc.)
+- **Author**: Josh Thomson <ijoshuathomson@gmail.com>
+- **Fix**: Enabled image decoding features in `Cargo.toml` (`jpeg`, `png`, `webp`, `bmp`, `tga`, `ktx2`, `dds`) allowing `.glb` files with embedded JPEG textures to parse and load into the 3D scene without errors. Documented in `wiki/risks/defects.md`.

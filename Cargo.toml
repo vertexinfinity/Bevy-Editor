@@ -14,6 +14,13 @@ bevy = { path = "../Engine/bevy", default-features = true, features = [
     "bevy_remote",
     "serialize",
     "debug",
+    "jpeg",
+    "png",
+    "webp",
+    "bmp",
+    "tga",
+    "ktx2",
+    "dds",
 ] }
 rfd = "0.15"
 serde = { version = "1", features = ["derive"] }
