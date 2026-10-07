@@ -1,6 +1,7 @@
 //! Helper systems to spawn 3D primitive shapes and starter objects.
 
 use bevy::prelude::*;
+use crate::scene::SceneEntity;
 
 /// Spawns a starter scene with ground, lighting, and sample props.
 pub fn spawn_starter_scene(
@@ -10,6 +11,7 @@ pub fn spawn_starter_scene(
 ) {
     // Directional Sun Light
     commands.spawn((
+        SceneEntity,
         Name::new("Sun Light"),
         DirectionalLight {
             illuminance: 12_000.0,
@@ -21,6 +23,7 @@ pub fn spawn_starter_scene(
 
     // Ground Plane
     commands.spawn((
+        SceneEntity,
         Name::new("Ground Plane"),
         Mesh3d(meshes.add(Plane3d::default().mesh().size(20.0, 20.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
@@ -33,6 +36,7 @@ pub fn spawn_starter_scene(
 
     // Center Cube
     commands.spawn((
+        SceneEntity,
         Name::new("Cube"),
         Mesh3d(meshes.add(Cuboid::new(1.5, 1.5, 1.5))),
         MeshMaterial3d(materials.add(StandardMaterial {
@@ -45,6 +49,7 @@ pub fn spawn_starter_scene(
 
     // Sphere
     commands.spawn((
+        SceneEntity,
         Name::new("Sphere"),
         Mesh3d(meshes.add(Sphere::new(0.8))),
         MeshMaterial3d(materials.add(StandardMaterial {

@@ -42,6 +42,7 @@ fn handle_file_drag_and_drop(
 
                         // Spawn glTF model entity with scene root
                         commands.spawn((
+                            crate::scene::SceneEntity,
                             Name::new(file_name.clone()),
                             WorldAssetRoot(
                                 asset_server.load(GltfAssetLabel::Scene(0).from_asset(path_str)),
@@ -59,6 +60,7 @@ fn handle_file_drag_and_drop(
                         let path_str = path_buf.to_string_lossy().to_string();
 
                         commands.spawn((
+                            crate::scene::SceneEntity,
                             Name::new(format!("Scene: {file_name}")),
                             DynamicWorldRoot(asset_server.load(path_str)),
                             Transform::IDENTITY,

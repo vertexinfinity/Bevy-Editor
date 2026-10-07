@@ -207,6 +207,7 @@ pub fn handle_spawn_asset_messages(
         match ext.as_str() {
             "glb" | "gltf" => {
                 commands.spawn((
+                    crate::scene::SceneEntity,
                     Name::new(item.file_name.clone()),
                     WorldAssetRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(path_str))),
                     Transform::IDENTITY,
@@ -218,6 +219,7 @@ pub fn handle_spawn_asset_messages(
             }
             "ron" | "bsn" => {
                 commands.spawn((
+                    crate::scene::SceneEntity,
                     Name::new(format!("Scene: {}", item.file_name)),
                     DynamicWorldRoot(asset_server.load(path_str)),
                     Transform::IDENTITY,

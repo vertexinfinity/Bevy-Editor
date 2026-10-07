@@ -179,16 +179,8 @@ pub fn handle_menu_actions(world: &mut World) {
                 }
             }
             MenuAction::NewScene => {
-                info!("Creating new scene: resetting user entities...");
-                let entities_to_despawn: Vec<Entity> = world
-                    .iter_entities()
-                    .filter(|e| !e.contains::<EditorInternal>())
-                    .map(|e| e.id())
-                    .collect();
-
-                for e in entities_to_despawn {
-                    world.despawn(e);
-                }
+                info!("Creating new scene: resetting user scene entities...");
+                world.despawn_all::<With<crate::scene::SceneEntity>>();
 
                 if let Some(mut current_scene) = world.get_resource_mut::<CurrentScene>() {
                     current_scene.file_path = None;
@@ -205,20 +197,13 @@ pub fn handle_menu_actions(world: &mut World) {
                     .pick_file()
                 {
                     info!("Selected scene to open: {:?}", file);
-                    // Clear existing user entities
-                    let entities_to_despawn: Vec<Entity> = world
-                        .iter_entities()
-                        .filter(|e| !e.contains::<EditorInternal>())
-                        .map(|e| e.id())
-                        .collect();
-
-                    for e in entities_to_despawn {
-                        world.despawn(e);
-                    }
+                    // Clear existing user scene entities
+                    world.despawn_all::<With<crate::scene::SceneEntity>>();
 
                     let path_str = file.to_string_lossy().to_string();
                     let asset_server = world.resource::<AssetServer>().clone();
                     world.spawn((
+                        crate::scene::SceneEntity,
                         Name::new(format!("Scene: {}", file.file_name().and_then(|n| n.to_str()).unwrap_or("loaded"))),
                         bevy::world_serialization::DynamicWorldRoot(asset_server.load(path_str)),
                         Transform::IDENTITY,

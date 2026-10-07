@@ -13,6 +13,14 @@ use bevy::{
 #[reflect(Component, Default)]
 pub struct EditorInternal;
 
+/// Marker component for authorable scene entities.
+///
+/// Ensures only user scene entities are serialized or cleared,
+/// preventing accidental destruction of editor UI, windows, or Bevy resource entities.
+#[derive(Component, Reflect, Default, Clone, Copy, Debug, PartialEq, Eq)]
+#[reflect(Component, Default)]
+pub struct SceneEntity;
+
 /// Serializes the current world to a RON scene file.
 pub fn save_world_to_scene(world: &World, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let type_registry = world.resource::<AppTypeRegistry>().read();

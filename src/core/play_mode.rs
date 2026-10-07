@@ -134,34 +134,11 @@ pub fn handle_play_mode_actions(world: &mut World) {
                     *world.resource_mut::<PlayState>() = PlayState::Edit;
 
                     // Despawn preview pop-out window and camera
-                    let preview_windows: Vec<Entity> = world
-                        .iter_entities()
-                        .filter(|e| e.contains::<PreviewWindow>())
-                        .map(|e| e.id())
-                        .collect();
-                    for e in preview_windows {
-                        world.despawn(e);
-                    }
+                    world.despawn_all::<With<PreviewWindow>>();
+                    world.despawn_all::<With<PreviewCamera>>();
 
-                    let preview_cams: Vec<Entity> = world
-                        .iter_entities()
-                        .filter(|e| e.contains::<PreviewCamera>())
-                        .map(|e| e.id())
-                        .collect();
-                    for e in preview_cams {
-                        world.despawn(e);
-                    }
-
-                    // Despawn simulated user entities
-                    let entities_to_despawn: Vec<Entity> = world
-                        .iter_entities()
-                        .filter(|e| !e.contains::<EditorInternal>())
-                        .map(|e| e.id())
-                        .collect();
-
-                    for e in entities_to_despawn {
-                        world.despawn(e);
-                    }
+                    // Despawn simulated scene entities
+                    world.despawn_all::<With<crate::scene::SceneEntity>>();
 
                     // Restore in-memory snapshot
                     let snapshot = world.resource_mut::<SceneSnapshot>().snapshot.take();
