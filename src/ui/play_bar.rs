@@ -37,8 +37,10 @@ pub fn spawn_play_bar(mut commands: Commands) {
         ))
         .id();
 
-    // Play Button
+    // Play Button (In-Viewport)
     spawn_play_button(&mut commands, bar_root, "▶ Play", PlayModeAction::Play, true);
+    // Pop-out Window Button (Dedicated Window)
+    spawn_play_button(&mut commands, bar_root, "⧉ Window", PlayModeAction::PlayInWindow, false);
     // Pause Button
     spawn_play_button(&mut commands, bar_root, "⏸ Pause", PlayModeAction::Pause, false);
     // Stop Button
