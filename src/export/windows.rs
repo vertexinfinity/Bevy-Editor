@@ -62,22 +62,68 @@ impl Exporter for WindowsExporter {
         }
 
         let target_dir = export_dir.join("target");
+        info!("[Export:Windows] Starting cargo build in {} (target-dir: {})...", project_dir.display(), target_dir.display());
+
         let mut cmd = Command::new("cargo");
         cmd.current_dir(&project_dir)
             .args(["build", "--manifest-path"])
             .arg(&manifest_path)
             .arg("--target-dir")
-            .arg(&target_dir);
+            .arg(&target_dir)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
         if ctx.release {
             cmd.arg("--release");
         }
 
-        let output = cmd.output().map_err(|e| format!("Failed to run cargo build: {e}"))?;
-        if !output.status.success() {
-            let err_msg = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("Windows build failed: {err_msg}"));
+        let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn cargo build: {e}"))?;
+
+        // Read and stream stderr (cargo logs progress and errors to stderr)
+        let stderr = child.stderr.take();
+        let stdout = child.stdout.take();
+
+        let stderr_handle = std::thread::spawn(move || {
+            let mut captured = String::new();
+            if let Some(pipe) = stderr {
+                use std::io::{BufRead, BufReader};
+                let reader = BufReader::new(pipe);
+                for line in reader.lines().flatten() {
+                    info!("[cargo build] {line}");
+                    captured.push_str(&line);
+                    captured.push('\n');
+                }
+            }
+            captured
+        });
+
+        let stdout_handle = std::thread::spawn(move || {
+            if let Some(pipe) = stdout {
+                use std::io::{BufRead, BufReader};
+                let reader = BufReader::new(pipe);
+                for line in reader.lines().flatten() {
+                    info!("[cargo build stdout] {line}");
+                }
+            }
+        });
+
+        let status = child.wait().map_err(|e| format!("Failed to wait for cargo build: {e}"))?;
+        let _ = stdout_handle.join();
+        let captured_err = stderr_handle.join().unwrap_or_default();
+
+        if !status.success() {
+            let last_lines: String = captured_err
+                .lines()
+                .rev()
+                .take(15)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect::<Vec<_>>()
+                .join("\n");
+            return Err(format!("Windows build failed (exit code {:?}):\n{}", status.code(), last_lines));
         }
 
+        info!("[Export:Windows] Build completed successfully.");
         Ok(ExportResult {
             primary_artifact: target_dir.join(if ctx.release { "release" } else { "debug" }),
             message: format!("Windows project build completed in {}", target_dir.display()),

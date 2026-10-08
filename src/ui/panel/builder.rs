@@ -131,6 +131,75 @@ impl PanelBuilder {
                 BorderColor::all(BORDER_SUBTLE),
                 ChildOf(root),
             ))
+            .observe(move |_drag: On<bevy::picking::events::PointerDrag>,
+                           window: Query<&Window, With<bevy::window::PrimaryWindow>>,
+                           mut panel_query: Query<(&PanelRoot, &mut PanelMetadata, &mut Node, &mut BorderColor)>| {
+                if let Ok(win) = window.single() {
+                    if let Some(cursor) = win.cursor_position() {
+                        let win_width = win.width();
+                        for (panel_root, mut meta, mut node, mut border) in &mut panel_query {
+                            if panel_root.0 == id {
+                                *border = BorderColor::all(BORDER_ACCENT);
+                                if cursor.x < win_width * 0.25 {
+                                    // Dock to Left
+                                    node.left = px(0);
+                                    node.right = Val::Auto;
+                                    node.border = UiRect::right(px(1));
+                                    meta.dock_zone = PanelDockZone::Left;
+                                } else if cursor.x > win_width * 0.75 {
+                                    // Dock to Right
+                                    node.left = Val::Auto;
+                                    node.right = px(0);
+                                    node.border = UiRect::left(px(1));
+                                    meta.dock_zone = PanelDockZone::Right;
+                                } else {
+                                    // Free floating
+                                    let half_w = meta.default_width * 0.5;
+                                    node.left = px((cursor.x - half_w).clamp(10.0, win_width - meta.default_width - 10.0));
+                                    node.top = px((cursor.y - 16.0).clamp(36.0, win.height() - 150.0));
+                                    node.right = Val::Auto;
+                                    node.bottom = Val::Auto;
+                                    node.border = UiRect::all(px(1));
+                                    meta.dock_zone = PanelDockZone::Floating;
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+            .observe(move |_drag_end: On<bevy::picking::events::PointerDragEnd>,
+                           mut panel_query: Query<(&PanelRoot, &PanelMetadata, &mut Node, &mut BorderColor)>| {
+                for (panel_root, meta, mut node, mut border) in &mut panel_query {
+                    if panel_root.0 == id {
+                        *border = BorderColor::all(BORDER_SUBTLE);
+                        match meta.dock_zone {
+                            PanelDockZone::Left => {
+                                node.left = px(0);
+                                node.right = Val::Auto;
+                                node.top = px(36);
+                                node.bottom = px(28);
+                                node.border = UiRect::right(px(1));
+                            }
+                            PanelDockZone::Right => {
+                                node.left = Val::Auto;
+                                node.right = px(0);
+                                node.top = px(36);
+                                node.bottom = px(28);
+                                node.border = UiRect::left(px(1));
+                            }
+                            PanelDockZone::Bottom => {
+                                node.left = px(255);
+                                node.right = Val::Auto;
+                                node.bottom = px(34);
+                                node.border = UiRect::all(px(1));
+                            }
+                            PanelDockZone::Floating => {
+                                node.border = UiRect::all(px(1));
+                            }
+                        }
+                    }
+                }
+            })
             .id();
 
         // Header Left: Icon & Title

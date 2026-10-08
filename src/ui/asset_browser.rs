@@ -151,8 +151,8 @@ pub fn spawn_asset_browser(mut commands: Commands, state: Res<AssetBrowserState>
                 position_type: PositionType::Absolute,
                 left: px(255), // offset cleanly from hierarchy dock
                 bottom: px(34), // above bottom status bar
-                width: px(440),
-                max_width: percent(50.0),
+                width: px(520),
+                max_width: percent(55.0),
                 height: px(250),
                 max_height: percent(50.0),
                 border: UiRect::all(px(1)),
@@ -213,21 +213,7 @@ pub fn spawn_asset_browser(mut commands: Commands, state: Res<AssetBrowserState>
         ChildOf(header_left),
     ));
 
-    // Header Right controls (Up/Back, Refresh & Dock Collapse)
-    let header_right = commands
-        .spawn((
-            EditorInternal,
-            Node {
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: px(4),
-                ..default()
-            },
-            ChildOf(header),
-        ))
-        .id();
-
-    // + New Script Button
+    // + New Script Button (placed in header_left so it's always prominently visible)
     let new_script_btn = commands
         .spawn((
             EditorInternal,
@@ -239,7 +225,7 @@ pub fn spawn_asset_browser(mut commands: Commands, state: Res<AssetBrowserState>
             },
             BackgroundColor(BG_INPUT),
             BorderColor::all(BORDER_SUBTLE),
-            ChildOf(header_right),
+            ChildOf(header_left),
         ))
         .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
             if let Ok(mut bg) = bg.get_mut(trigger.entity) {
@@ -286,7 +272,7 @@ pub fn spawn_asset_browser(mut commands: Commands, state: Res<AssetBrowserState>
             },
             BackgroundColor(BG_INPUT),
             BorderColor::all(BORDER_SUBTLE),
-            ChildOf(header_right),
+            ChildOf(header_left),
         ))
         .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
             if let Ok(mut bg) = bg.get_mut(trigger.entity) {
@@ -320,6 +306,20 @@ pub fn spawn_asset_browser(mut commands: Commands, state: Res<AssetBrowserState>
         TextColor(TEXT_PRIMARY),
         ChildOf(new_scene_btn),
     ));
+
+    // Header Right controls (Up/Back, Refresh & Dock Collapse)
+    let header_right = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: px(4),
+                ..default()
+            },
+            ChildOf(header),
+        ))
+        .id();
 
     // Up / Back Button
     let up_btn = commands
