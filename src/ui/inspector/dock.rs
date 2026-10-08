@@ -596,79 +596,30 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
         ChildOf(comp_card),
     ));
 
-    // D. Script Properties Card (Interactive Game Script Tuning)
-    let script_card = commands
-        .spawn((
-            EditorInternal,
-            ScriptCardRoot,
-            Node {
-                display: Display::None,
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::all(SPACE_COMPACT),
-                row_gap: px(6),
-                border: UiRect::all(px(1)),
-                border_radius: radius_card(),
-                ..default()
-            },
-            BackgroundColor(BG_CARD),
-            BorderColor::all(BORDER_CARD),
-            ChildOf(parent),
-        ))
-        .id();
+    // D. Script Properties Card (Standardized CardBuilder shell)
+    let (script_card, script_actions, script_body) = crate::ui::panel::CardBuilder::new("Script Component")
+        .icon("📜")
+        .collapsible(true)
+        .spawn_shell(commands, parent);
 
-    let script_header = commands
-        .spawn((
-            EditorInternal,
-            Node {
-                flex_direction: FlexDirection::Row,
-                justify_content: JustifyContent::SpaceBetween,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            ChildOf(script_card),
-        ))
-        .id();
+    commands.entity(script_card).insert(ScriptCardRoot);
 
-    commands.spawn((
-        EditorInternal,
-        Pickable::IGNORE,
-        Text::new("Script Properties ??"),
-        TextFont {
-            font_size: bevy::text::FontSize::Px(FONT_SIZE_NORMAL),
-            ..default()
-        },
-        TextColor(TEXT_PRIMARY),
-        ChildOf(script_header),
-    ));
-
-    let script_nudges = commands
-        .spawn((
-            EditorInternal,
-            Node {
-                flex_direction: FlexDirection::Row,
-                column_gap: px(4),
-                ..default()
-            },
-            ChildOf(script_header),
-        ))
-        .id();
-
-    spawn_script_prop_btn(commands, script_nudges, "Speed -1", ScriptPropAction::NudgeFloat { key: "move_speed".to_string(), delta: -1.0 });
-    spawn_script_prop_btn(commands, script_nudges, "Speed +1", ScriptPropAction::NudgeFloat { key: "move_speed".to_string(), delta: 1.0 });
-    spawn_script_prop_btn(commands, script_nudges, "Jump +2", ScriptPropAction::NudgeFloat { key: "jump_force".to_string(), delta: 2.0 });
-    spawn_script_prop_btn(commands, script_nudges, "Toggle Active", ScriptPropAction::ToggleBool { key: "is_active".to_string() });
+    spawn_script_prop_btn(commands, script_actions, "Speed -1", ScriptPropAction::NudgeFloat { key: "move_speed".to_string(), delta: -1.0 });
+    spawn_script_prop_btn(commands, script_actions, "Speed +1", ScriptPropAction::NudgeFloat { key: "move_speed".to_string(), delta: 1.0 });
+    spawn_script_prop_btn(commands, script_actions, "Jump +2", ScriptPropAction::NudgeFloat { key: "jump_force".to_string(), delta: 2.0 });
+    spawn_script_prop_btn(commands, script_actions, "Toggle Active", ScriptPropAction::ToggleBool { key: "is_active".to_string() });
 
     commands.spawn((
         EditorInternal,
         ScriptPropsLabel,
         Pickable::IGNORE,
-        Text::new("No ScriptComponent on selected entity"),
+        Text::new(""),
         TextFont {
             font_size: bevy::text::FontSize::Px(FONT_SIZE_SMALL),
             ..default()
         },
         TextColor(TEXT_SECONDARY),
-        ChildOf(script_card),
+        ChildOf(script_body),
     ));
 
     // E. Add Component Section
