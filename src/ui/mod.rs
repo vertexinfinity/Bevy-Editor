@@ -54,6 +54,7 @@ impl Plugin for EditorUiPlugin {
         app.insert_resource(UiTheme(create_dark_theme()))
             .init_state::<EditorAppState>()
             .init_resource::<hub::ActiveProject>()
+            .init_resource::<menu::FileMenuState>()
             .init_resource::<menu::BuildMenuState>()
             .init_resource::<menu::ActiveWorkspace>()
             .init_resource::<hierarchy::HierarchyState>()
@@ -110,7 +111,7 @@ impl Plugin for EditorUiPlugin {
                 Update,
                 (
                     menu::handle_menu_actions,
-                    menu::update_build_menu_visibility,
+                    menu::update_dropdown_menus_visibility,
                     menu::handle_switch_workspace,
                     menu::update_mcp_bridge_status,
                     tools_bar::update_active_tool_highlight,

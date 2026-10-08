@@ -8,6 +8,20 @@ use crate::export::{ExportContext, ExportResult, Exporter};
 #[derive(Default)]
 pub struct WindowsExporter;
 
+fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        if ty.is_dir() {
+            copy_dir_all(&entry.path(), &dst.join(entry.file_name()))?;
+        } else {
+            fs::copy(entry.path(), dst.join(entry.file_name()))?;
+        }
+    }
+    Ok(())
+}
+
 impl Exporter for WindowsExporter {
     fn id(&self) -> &'static str {
         "windows"
@@ -62,6 +76,12 @@ impl Exporter for WindowsExporter {
 
         let assets_dir = export_dir.join("assets");
         fs::create_dir_all(&assets_dir).map_err(|e| format!("Failed to create assets directory: {e}"))?;
+
+        // Recursively sync the project's assets directory if present
+        let project_assets = project_dir.join("assets");
+        if project_assets.is_dir() {
+            let _ = copy_dir_all(&project_assets, &assets_dir);
+        }
 
         if let Some(scene_path) = &ctx.scene_path {
             if scene_path.exists() {
@@ -163,10 +183,30 @@ impl Exporter for WindowsExporter {
             return Err(format!("Windows build failed (exit code {:?}):\n{}", status.code(), last_lines));
         }
 
+        let bin_folder = target_dir.join(if ctx.release { "release" } else { "debug" });
+        if bin_folder.is_dir() {
+            let _ = copy_dir_all(&assets_dir, &bin_folder.join("assets"));
+        }
+
         info!("[Export:Windows] Build completed successfully.");
         Ok(ExportResult {
-            primary_artifact: target_dir.join(if ctx.release { "release" } else { "debug" }),
-            message: format!("Windows project build completed in {}", target_dir.display()),
+            primary_artifact: bin_folder.clone(),
+            message: format!("Windows project build completed in {}", bin_folder.display()),
         })
     }
 }
+
+fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        if ty.is_dir() {
+            copy_dir_all(&entry.path(), &dst.join(entry.file_name()))?;
+        } else {
+            fs::copy(entry.path(), dst.join(entry.file_name()))?;
+        }
+    }
+    Ok(())
+}
+

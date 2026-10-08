@@ -26,6 +26,7 @@ pub enum MenuAction {
     OpenScene,
     SaveScene,
     SaveAsScene,
+    SetAsDefaultScene,
     ToggleBuildMenu,
     BuildAndroid,
     BuildWindows,
@@ -78,6 +79,12 @@ pub struct SwitchWorkspaceMessage(pub WorkspacePreset);
 pub struct WorkspaceSelectorLabel;
 
 #[derive(Resource, Default)]
+pub struct FileMenuState(pub bool);
+
+#[derive(Component)]
+pub struct FileMenuPanel;
+
+#[derive(Resource, Default)]
 pub struct BuildMenuState(pub bool);
 
 #[derive(Component)]
@@ -107,7 +114,7 @@ pub fn spawn_menu_bar(mut commands: Commands, current_ws: Res<ActiveWorkspace>) 
         ))
         .id();
 
-    // 1. Left Container: Brand Badge + Organized Menu Buttons (File, Edit, Scene, Export)
+    // 1. Left Container: Brand Badge + File Dropdown + Quick Save Icon
     let left_group = commands
         .spawn((
             EditorInternal,
@@ -166,13 +173,135 @@ pub fn spawn_menu_bar(mut commands: Commands, current_ws: Res<ActiveWorkspace>) 
         ChildOf(brand_pill),
     ));
 
-    // Section 1: Project & Scene Management
-    spawn_menu_button(&mut commands, left_group, "+ Project", MenuAction::NewProject);
-    spawn_menu_button(&mut commands, left_group, "Open Project...", MenuAction::OpenProject);
-    spawn_menu_button(&mut commands, left_group, "New Scene", MenuAction::NewScene);
-    spawn_menu_button(&mut commands, left_group, "Open Scene...", MenuAction::OpenScene);
-    spawn_menu_button(&mut commands, left_group, "Save", MenuAction::SaveScene);
-    spawn_menu_button(&mut commands, left_group, "Save As...", MenuAction::SaveAsScene);
+    // File Menu Dropdown Trigger
+    let file_dropdown_btn = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                position_type: PositionType::Relative,
+                padding: UiRect::axes(px(10), px(4)),
+                border: UiRect::all(px(1)),
+                border_radius: radius_button(),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(BG_INPUT),
+            BorderColor::all(BORDER_SUBTLE),
+            ChildOf(left_group),
+        ))
+        .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_HOVER);
+            }
+        })
+        .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_INPUT);
+            }
+        })
+        .observe(|click: On<PointerClick>, mut file_menu_state: ResMut<FileMenuState>| {
+            if click.button == PointerButton::Primary {
+                file_menu_state.0 = !file_menu_state.0;
+            }
+        })
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new("File  ▾"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(12.0),
+            weight: FontWeight::MEDIUM,
+            ..default()
+        },
+        TextColor(TEXT_PRIMARY),
+        ChildOf(file_dropdown_btn),
+    ));
+
+    // File Dropdown Popup Panel
+    let file_menu_popup = commands
+        .spawn((
+            EditorInternal,
+            FileMenuPanel,
+            Node {
+                position_type: PositionType::Absolute,
+                top: px(32),
+                left: px(0),
+                width: px(170),
+                padding: UiRect::all(px(4)),
+                flex_direction: FlexDirection::Column,
+                row_gap: px(2),
+                display: Display::None,
+                border: UiRect::all(px(1)),
+                border_radius: radius_panel(),
+                ..default()
+            },
+            BackgroundColor(BG_CARD),
+            BorderColor::all(BORDER_SUBTLE),
+            ChildOf(file_dropdown_btn),
+        ))
+        .id();
+
+    // Items inside File dropdown
+    spawn_dropdown_item(&mut commands, file_menu_popup, "+ New Project...", MenuAction::NewProject);
+    spawn_dropdown_item(&mut commands, file_menu_popup, "📂 Open Project...", MenuAction::OpenProject);
+    spawn_dropdown_separator(&mut commands, file_menu_popup);
+    spawn_dropdown_item(&mut commands, file_menu_popup, "📄 New Scene", MenuAction::NewScene);
+    spawn_dropdown_item(&mut commands, file_menu_popup, "📂 Open Scene...", MenuAction::OpenScene);
+    spawn_dropdown_item(&mut commands, file_menu_popup, "💾 Save Scene", MenuAction::SaveScene);
+    spawn_dropdown_item(&mut commands, file_menu_popup, "💾 Save Scene As...", MenuAction::SaveAsScene);
+    spawn_dropdown_separator(&mut commands, file_menu_popup);
+    spawn_dropdown_item(&mut commands, file_menu_popup, "⭐ Set as Default Scene", MenuAction::SetAsDefaultScene);
+
+    // Quick Action: Save Scene Shortcut Button
+    let quick_save_btn = commands
+        .spawn((
+            EditorInternal,
+            MenuAction::SaveScene,
+            Node {
+                padding: UiRect::axes(px(8), px(4)),
+                border: UiRect::all(px(1)),
+                border_radius: radius_button(),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(BG_INPUT),
+            BorderColor::all(BORDER_SUBTLE),
+            ChildOf(left_group),
+        ))
+        .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_HOVER);
+            }
+        })
+        .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_INPUT);
+            }
+        })
+        .observe(|click: On<PointerClick>, query: Query<&MenuAction>, mut writer: MessageWriter<MenuActionMessage>| {
+            if click.button == PointerButton::Primary {
+                if let Ok(action) = query.get(click.entity) {
+                    writer.write(MenuActionMessage(*action));
+                }
+            }
+        })
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new("💾 Save"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(11.5),
+            ..default()
+        },
+        TextColor(TEXT_PRIMARY),
+        ChildOf(quick_save_btn),
+    ));
 
     // 2. Right Container: Platform Exports + Workspace Switcher + MCP Status
     let right_group = commands
@@ -227,7 +356,7 @@ pub fn spawn_menu_bar(mut commands: Commands, current_ws: Res<ActiveWorkspace>) 
     commands.spawn((
         EditorInternal,
         Pickable::IGNORE,
-        Text::new("Build  v"),
+        Text::new("Build  ▾"),
         TextFont {
             font_size: bevy::text::FontSize::Px(11.5),
             weight: FontWeight::SEMIBOLD,
@@ -381,63 +510,7 @@ pub fn spawn_menu_bar(mut commands: Commands, current_ws: Res<ActiveWorkspace>) 
     ));
 }
 
-fn spawn_menu_button(
-    commands: &mut Commands,
-    parent: Entity,
-    label: &str,
-    action: MenuAction,
-) {
-    let btn = commands
-        .spawn((
-            EditorInternal,
-            action,
-            Node {
-                padding: UiRect::axes(px(9), px(3)),
-                border: UiRect::all(px(1)),
-                border_radius: BorderRadius::all(px(4)),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            BackgroundColor(BG_INPUT),
-            BorderColor::all(BORDER_SUBTLE),
-            ChildOf(parent),
-        ))
-        .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
-            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(BG_HOVER);
-            }
-        })
-        .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
-            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(BG_INPUT);
-            }
-        })
-        .observe(
-            |click: On<PointerClick>,
-             query: Query<&MenuAction>,
-             mut writer: MessageWriter<MenuActionMessage>| {
-                if click.button == PointerButton::Primary {
-                    if let Ok(action) = query.get(click.entity) {
-                        writer.write(MenuActionMessage(*action));
-                    }
-                }
-            },
-        )
-        .id();
 
-    commands.spawn((
-        EditorInternal,
-        Pickable::IGNORE,
-        Text::new(label),
-        TextFont {
-            font_size: bevy::text::FontSize::Px(11.5),
-            ..default()
-        },
-        TextColor(TEXT_PRIMARY),
-        ChildOf(btn),
-    ));
-}
 
 #[derive(Component)]
 pub struct McpStatusLabel;
@@ -491,6 +564,88 @@ fn spawn_build_target_button(
         TextColor(TEXT_PRIMARY),
         ChildOf(button),
     ));
+}
+
+fn spawn_dropdown_item(
+    commands: &mut Commands,
+    parent: Entity,
+    label: &'static str,
+    action: MenuAction,
+) {
+    let button = commands
+        .spawn((
+            EditorInternal,
+            action,
+            Node {
+                width: percent(100.0),
+                padding: UiRect::axes(px(8), px(5)),
+                border_radius: radius_button(),
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(BG_CARD),
+            ChildOf(parent),
+        ))
+        .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_HOVER);
+            }
+        })
+        .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_CARD);
+            }
+        })
+        .observe(|click: On<PointerClick>, query: Query<&MenuAction>, mut writer: MessageWriter<MenuActionMessage>, mut state: ResMut<FileMenuState>| {
+            if click.button == PointerButton::Primary {
+                state.0 = false;
+                if let Ok(action) = query.get(click.entity) {
+                    writer.write(MenuActionMessage(*action));
+                }
+            }
+        })
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new(label),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(11.5),
+            ..default()
+        },
+        TextColor(TEXT_PRIMARY),
+        ChildOf(button),
+    ));
+}
+
+fn spawn_dropdown_separator(commands: &mut Commands, parent: Entity) {
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Node {
+            width: percent(100.0),
+            height: px(1),
+            margin: UiRect::axes(px(0), px(2)),
+            ..default()
+        },
+        BackgroundColor(BORDER_SUBTLE),
+        ChildOf(parent),
+    ));
+}
+
+pub fn update_dropdown_menus_visibility(
+    file_state: Res<FileMenuState>,
+    build_state: Res<BuildMenuState>,
+    mut file_panels: Query<&mut Node, (With<FileMenuPanel>, Without<BuildMenuPanel>)>,
+    mut build_panels: Query<&mut Node, (With<BuildMenuPanel>, Without<FileMenuPanel>)>,
+) {
+    for mut node in &mut file_panels {
+        node.display = if file_state.0 { Display::Flex } else { Display::None };
+    }
+    for mut node in &mut build_panels {
+        node.display = if build_state.0 { Display::Flex } else { Display::None };
+    }
 }
 
 pub fn update_build_menu_visibility(
@@ -605,6 +760,91 @@ pub fn handle_menu_actions(world: &mut World) {
             }
             MenuAction::SaveAsScene => {
                 save_as_dialog(world);
+            }
+            MenuAction::SetAsDefaultScene => {
+                let project_dir = world.resource::<crate::ui::hub::ActiveProject>().project_dir.clone();
+                let Some(project_dir) = project_dir else {
+                    warn!("Cannot set default scene: No active game project loaded.");
+                    if let Some(mut status) = world.get_resource_mut::<crate::export::ExportStatus>() {
+                        *status = crate::export::ExportStatus::Failed {
+                            target: "Default Scene".to_string(),
+                            error: "Open or create a game project first before setting default scene.".to_string(),
+                        };
+                    }
+                    continue;
+                };
+
+                let scenes_dir = project_dir.join("assets").join("scenes");
+                let _ = std::fs::create_dir_all(&scenes_dir);
+                let default_scene_path = scenes_dir.join("default_scene.bsn");
+
+                // Save world to default_scene.bsn
+                if let Err(e) = save_load::save_world_to_scene(world, &default_scene_path) {
+                    warn!("Failed to save default scene: {e}");
+                    if let Some(mut status) = world.get_resource_mut::<crate::export::ExportStatus>() {
+                        *status = crate::export::ExportStatus::Failed {
+                            target: "Default Scene".to_string(),
+                            error: format!("Failed to save default scene: {e}"),
+                        };
+                    }
+                    continue;
+                }
+
+                // Update CurrentScene tracking
+                if let Some(mut current_scene) = world.get_resource_mut::<CurrentScene>() {
+                    current_scene.file_path = Some(default_scene_path.clone());
+                    current_scene.is_modified = false;
+                }
+
+                // Wire project main.rs to load default_scene.bsn on startup
+                let main_src_path = project_dir.join("src").join("main.rs");
+                if main_src_path.is_file() {
+                    if let Ok(main_src) = std::fs::read_to_string(&main_src_path) {
+                        if !main_src.contains("default_scene.bsn") {
+                            let updated_main = format!(
+                                r#"//! Standalone Bevy Game created by Bevy Editor.
+
+use bevy::prelude::*;
+
+fn main() {{
+    App::new()
+        .add_plugins(DefaultPlugins.set(WindowPlugin {{
+            primary_window: Some(Window {{
+                title: "MyBevyGame".to_string(),
+                resolution: (1280.0_f32, 720.0_f32).into(),
+                ..default()
+            }}),
+            ..default()
+        }}))
+        .add_systems(Startup, setup_scene)
+        .run();
+}}
+
+fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>) {{
+    // Default Camera
+    commands.spawn((
+        Camera3d::default(),
+        Transform::from_xyz(0.0, 5.0, 10.0).looking_at(Vec3::new(0.0, 1.0, 0.0), Vec3::Y),
+    ));
+
+    // Load default scene configured in Bevy Editor
+    commands.spawn(DynamicSceneRoot(asset_server.load("scenes/default_scene.bsn")));
+}}
+"#
+                            );
+                            let _ = std::fs::write(&main_src_path, updated_main);
+                        }
+                    }
+                }
+
+                info!("Set active scene as default scene in project: {}", default_scene_path.display());
+                if let Some(mut status) = world.get_resource_mut::<crate::export::ExportStatus>() {
+                    *status = crate::export::ExportStatus::Success {
+                        target: "Default Scene".to_string(),
+                        message: "Active scene set as build default (assets/scenes/default_scene.bsn)".to_string(),
+                        path: default_scene_path,
+                    };
+                }
             }
             MenuAction::ToggleBuildMenu => {
                 if let Some(mut state) = world.get_resource_mut::<BuildMenuState>() {
