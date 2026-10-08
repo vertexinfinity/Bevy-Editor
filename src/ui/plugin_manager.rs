@@ -320,6 +320,33 @@ pub fn spawn_plugin_manager_modal(mut commands: Commands) {
     for plugin in PLUGIN_CATALOG {
         spawn_plugin_item(&mut commands, list_scroll, plugin, false);
     }
+
+    // Footer: Status Message + Web Build Indicator + Add Custom Crate
+    let footer = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                flex_direction: FlexDirection::Row,
+                justify_content: JustifyContent::SpaceBetween,
+                align_items: AlignItems::Center,
+                padding: UiRect::top(px(8)),
+                border: UiRect::top(px(1)),
+                ..default()
+            },
+            BorderColor::all(BORDER_SUBTLE),
+            ChildOf(dialog),
+        ))
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        PluginStatusLabel,
+        Pickable::IGNORE,
+        Text::new("Select crates to include in your project builds (Windows, Web, Android)."),
+        TextFont { font_size: bevy::text::FontSize::Px(11.0), ..default() },
+        TextColor(TEXT_SECONDARY),
+        ChildOf(footer),
+    ));
 }
 
 fn spawn_category_filter_tab(
@@ -385,82 +412,7 @@ fn spawn_category_filter_tab(
     ));
 }
 
-    // Footer: Status Message + Web Build Indicator + Add Custom Crate
-    let footer = commands
-        .spawn((
-            EditorInternal,
-            Node {
-                flex_direction: FlexDirection::Row,
-                justify_content: JustifyContent::SpaceBetween,
-                align_items: AlignItems::Center,
-                padding: UiRect::top(px(8)),
-                border: UiRect::top(px(1)),
-                ..default()
-            },
-            BorderColor::all(BORDER_SUBTLE),
-            ChildOf(dialog),
-        ))
-        .id();
-
-    commands.spawn((
-        EditorInternal,
-        PluginStatusLabel,
-        Pickable::IGNORE,
-        Text::new("Select crates to include in your project builds (Windows, Web, Android)."),
-        TextFont { font_size: bevy::text::FontSize::Px(11.0), ..default() },
-        TextColor(TEXT_SECONDARY),
-        ChildOf(footer),
-    ));
-}
-
-fn spawn_category_filter_tab(
-    commands: &mut Commands,
-    parent: Entity,
-    label: &'static str,
-    cat: Option<PluginCategory>,
-) {
-    let btn = commands
-        .spawn((
-            EditorInternal,
-            Node {
-                padding: UiRect::axes(px(8), px(3)),
-                border_radius: radius_button(),
-                border: UiRect::all(px(1)),
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            BackgroundColor(BG_CARD),
-            BorderColor::all(BORDER_SUBTLE),
-            ChildOf(parent),
-        ))
-        .observe(move |click: On<PointerClick>, mut writer: MessageWriter<FilterPluginCategoryMessage>| {
-            if click.button == PointerButton::Primary {
-                writer.write(FilterPluginCategoryMessage { category: cat });
-            }
-        })
-        .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
-            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(BG_HOVER);
-            }
-        })
-        .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
-            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(BG_CARD);
-            }
-        })
-        .id();
-
-    commands.spawn((
-        EditorInternal,
-        Pickable::IGNORE,
-        Text::new(label),
-        TextFont { font_size: bevy::text::FontSize::Px(10.5), ..default() },
-        TextColor(TEXT_PRIMARY),
-        ChildOf(btn),
-    ));
-}
-
-fn spawn_plugin_item(commands: &mut Commands, parent: Entity, plugin: &'static PluginEntry) {
+fn spawn_plugin_item(commands: &mut Commands, parent: Entity, plugin: &'static PluginEntry, is_enabled: bool) {
     let item_card = commands
         .spawn((
             EditorInternal,
@@ -608,6 +560,9 @@ fn spawn_plugin_item(commands: &mut Commands, parent: Entity, plugin: &'static P
     ));
 
     // Right Action: Toggle Checkbox Button
+    let btn_bg = if is_enabled { ACCENT_CYAN_DIM } else { BG_INPUT };
+    let btn_text = if is_enabled { "Enabled ✓" } else { "Enable ☑" };
+
     let toggle_btn = commands
         .spawn((
             EditorInternal,
@@ -623,7 +578,7 @@ fn spawn_plugin_item(commands: &mut Commands, parent: Entity, plugin: &'static P
                 column_gap: px(6),
                 ..default()
             },
-            BackgroundColor(BG_INPUT),
+            BackgroundColor(btn_bg),
             BorderColor::all(BORDER_SUBTLE),
             ChildOf(item_card),
         ))
@@ -642,9 +597,10 @@ fn spawn_plugin_item(commands: &mut Commands, parent: Entity, plugin: &'static P
                 *bg = BackgroundColor(BG_HOVER);
             }
         })
-        .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+        .observe(|trigger: On<PointerOut>, query: Query<&CrateToggleCheckbox>, state: Res<PluginManagerState>, mut bg: Query<&mut BackgroundColor>| {
             if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                *bg = BackgroundColor(BG_INPUT);
+                let active = query.get(trigger.entity).map(|c| state.enabled_crates.contains(&c.crate_name)).unwrap_or(false);
+                *bg = BackgroundColor(if active { ACCENT_CYAN_DIM } else { BG_INPUT });
             }
         })
         .id();
@@ -652,7 +608,7 @@ fn spawn_plugin_item(commands: &mut Commands, parent: Entity, plugin: &'static P
     commands.spawn((
         EditorInternal,
         Pickable::IGNORE,
-        Text::new("Enable ☑"),
+        Text::new(btn_text),
         TextFont {
             font_size: bevy::text::FontSize::Px(10.5),
             weight: FontWeight::MEDIUM,
@@ -664,10 +620,13 @@ fn spawn_plugin_item(commands: &mut Commands, parent: Entity, plugin: &'static P
 }
 
 pub fn handle_toggle_plugin_manager(
+    mut commands: Commands,
     mut messages: MessageReader<TogglePluginManagerMessage>,
     mut state: ResMut<PluginManagerState>,
     project: Res<crate::ui::hub::ActiveProject>,
     mut modal_query: Query<&mut Node, With<PluginManagerModalRoot>>,
+    list_query: Query<Entity, With<PluginListContainer>>,
+    children_query: Query<&Children>,
 ) {
     for _ in messages.read() {
         state.is_open = !state.is_open;
@@ -675,11 +634,113 @@ pub fn handle_toggle_plugin_manager(
             if let Some(ref dir) = project.project_dir {
                 state.refresh_from_project(dir);
             }
+            // Refresh list items to accurately show enabled state
+            if let Ok(container) = list_query.single() {
+                if let Ok(children) = children_query.get(container) {
+                    for child in children.iter() {
+                        commands.entity(child).despawn();
+                    }
+                }
+                for plugin in PLUGIN_CATALOG {
+                    if state.selected_category.is_none() || state.selected_category == Some(plugin.category) {
+                        let is_enabled = state.enabled_crates.contains(&plugin.name.to_string());
+                        spawn_plugin_item(&mut commands, container, plugin, is_enabled);
+                    }
+                }
+            }
         }
         for mut node in &mut modal_query {
             node.display = if state.is_open { Display::Flex } else { Display::None };
         }
     }
+}
+
+pub fn handle_filter_category_messages(
+    mut commands: Commands,
+    mut messages: MessageReader<FilterPluginCategoryMessage>,
+    mut state: ResMut<PluginManagerState>,
+    list_query: Query<Entity, With<PluginListContainer>>,
+    mut scroll_query: Query<&mut ScrollPosition, With<PluginListContainer>>,
+    children_query: Query<&Children>,
+    mut tab_query: Query<(Entity, &CategoryFilterTab, &Children)>,
+    mut bg_query: Query<&mut BackgroundColor>,
+    mut border_query: Query<&mut BorderColor>,
+    mut text_query: Query<(&mut TextColor, &mut TextFont)>,
+) {
+    for msg in messages.read() {
+        state.selected_category = msg.category;
+
+        // Reset scroll position to top when filter changes
+        if let Ok(mut scroll) = scroll_query.single_mut() {
+            scroll.y = 0.0;
+        }
+
+        // Update category tab button visuals
+        for (tab_ent, tab_info, children) in &mut tab_query {
+            let is_active = tab_info.category == state.selected_category;
+            if let Ok(mut bg) = bg_query.get_mut(tab_ent) {
+                *bg = BackgroundColor(if is_active { ACCENT_CYAN_DIM } else { BG_CARD });
+            }
+            if let Ok(mut border) = border_query.get_mut(tab_ent) {
+                *border = BorderColor::all(if is_active { BORDER_ACCENT } else { BORDER_SUBTLE });
+            }
+            for child in children.iter() {
+                if let Ok((mut text_color, mut text_font)) = text_query.get_mut(child) {
+                    text_color.0 = if is_active { ACCENT_CYAN } else { TEXT_SECONDARY };
+                    text_font.weight = if is_active { FontWeight::BOLD } else { FontWeight::MEDIUM };
+                }
+            }
+        }
+
+        // Despawn old items and respawn filtered items
+        let Ok(container) = list_query.single() else { continue };
+        if let Ok(children) = children_query.get(container) {
+            for child in children.iter() {
+                commands.entity(child).despawn();
+            }
+        }
+
+        for plugin in PLUGIN_CATALOG {
+            let matches_category = match state.selected_category {
+                Some(cat) => plugin.category == cat,
+                None => true,
+            };
+
+            if matches_category {
+                let is_enabled = state.enabled_crates.contains(&plugin.name.to_string());
+                spawn_plugin_item(&mut commands, container, plugin, is_enabled);
+            }
+        }
+    }
+}
+
+pub fn update_plugin_scroll_indicator(
+    list_query: Query<(&ScrollPosition, &ComputedNode), With<PluginListContainer>>,
+    mut thumb_query: Query<&mut Node, With<PluginScrollThumb>>,
+    track_query: Query<&ComputedNode, With<PluginScrollTrack>>,
+) {
+    let Ok((scroll, list_node)) = list_query.single() else { return };
+    let Ok(track_node) = track_query.single() else { return };
+    let Ok(mut thumb_node) = thumb_query.single_mut() else { return };
+
+    let content_height = list_node.content_size().y * list_node.inverse_scale_factor();
+    let visible_height = list_node.size().y * list_node.inverse_scale_factor();
+    let track_height = track_node.size().y * track_node.inverse_scale_factor();
+
+    if content_height <= visible_height || content_height <= 0.0 || track_height <= 0.0 {
+        thumb_node.display = Display::None;
+        return;
+    }
+
+    thumb_node.display = Display::Flex;
+    let thumb_height = ((visible_height / content_height) * track_height).clamp(24.0, track_height);
+    let max_scroll = (content_height - visible_height).max(1.0);
+    let scroll_fraction = (scroll.y / max_scroll).clamp(0.0, 1.0);
+    let max_thumb_top = track_height - thumb_height;
+    let thumb_top = scroll_fraction * max_thumb_top;
+
+    thumb_node.height = px(thumb_height);
+    thumb_node.margin = UiRect::top(px(thumb_top));
 }
 
 pub fn handle_toggle_crate_action(

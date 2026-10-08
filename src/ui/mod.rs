@@ -129,6 +129,8 @@ impl Plugin for EditorUiPlugin {
                     hierarchy::handle_hierarchy_search_input,
                     status_bar::update_status_bar,
                     plugin_manager::handle_toggle_plugin_manager,
+                    plugin_manager::handle_filter_category_messages,
+                    plugin_manager::update_plugin_scroll_indicator,
                     plugin_manager::handle_toggle_crate_action,
                 )
                     .run_if(in_state(EditorAppState::InEditor)),
