@@ -21,6 +21,7 @@ use crate::ui::theme::*;
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MenuAction {
     NewProject,
+    OpenProject,
     NewScene,
     OpenScene,
     SaveScene,
@@ -167,8 +168,9 @@ pub fn spawn_menu_bar(mut commands: Commands, current_ws: Res<ActiveWorkspace>) 
 
     // Section 1: Project & Scene Management
     spawn_menu_button(&mut commands, left_group, "+ Project", MenuAction::NewProject);
+    spawn_menu_button(&mut commands, left_group, "Open Project...", MenuAction::OpenProject);
     spawn_menu_button(&mut commands, left_group, "New Scene", MenuAction::NewScene);
-    spawn_menu_button(&mut commands, left_group, "Open...", MenuAction::OpenScene);
+    spawn_menu_button(&mut commands, left_group, "Open Scene...", MenuAction::OpenScene);
     spawn_menu_button(&mut commands, left_group, "Save", MenuAction::SaveScene);
     spawn_menu_button(&mut commands, left_group, "Save As...", MenuAction::SaveAsScene);
 
@@ -526,6 +528,37 @@ pub fn handle_menu_actions(world: &mut World) {
                     }
                 }
             }
+            MenuAction::OpenProject => {
+                if let Some(folder) = rfd::FileDialog::new()
+                    .set_title("Open Bevy Game Project (Select Folder with Cargo.toml)")
+                    .pick_folder()
+                {
+                    if folder.join("Cargo.toml").is_file() {
+                        let is_editor_repo = folder.file_name().and_then(|n| n.to_str()).map(|n| n.eq_ignore_ascii_case("Bevy-Editor")).unwrap_or(false);
+                        if is_editor_repo {
+                            warn!("Selected folder is the Bevy-Editor application repo itself, not a user game project.");
+                            if let Some(mut status) = world.get_resource_mut::<crate::export::ExportStatus>() {
+                                *status = crate::export::ExportStatus::Failed {
+                                    target: "Open Project".to_string(),
+                                    error: "Selected folder is Bevy-Editor itself. Please select your game project folder.".to_string(),
+                                };
+                            }
+                        } else {
+                            info!("Opened active user project: {}", folder.display());
+                            world.resource_mut::<crate::ui::hub::ActiveProject>().set_project_dir(folder.clone());
+                            if let Some(mut status) = world.get_resource_mut::<crate::export::ExportStatus>() {
+                                *status = crate::export::ExportStatus::Success {
+                                    target: "Project Loaded".to_string(),
+                                    message: format!("Loaded user project from {}", folder.display()),
+                                    path: folder,
+                                };
+                            }
+                        }
+                    } else {
+                        warn!("Folder does not contain Cargo.toml: {}", folder.display());
+                    }
+                }
+            }
             MenuAction::NewScene => {
                 info!("Creating new scene: resetting user scene entities...");
                 world.despawn_all::<With<crate::scene::SceneEntity>>();
@@ -609,19 +642,51 @@ fn save_as_dialog(world: &mut World) {
     }
 }
 
+fn is_editor_repository(dir: &std::path::Path) -> bool {
+    let name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    if name.eq_ignore_ascii_case("Bevy-Editor") {
+        return true;
+    }
+    if let Ok(manifest) = std::fs::read_to_string(dir.join("Cargo.toml")) {
+        if manifest.contains("name = \"bevy_editor\"") {
+            return true;
+        }
+    }
+    false
+}
+
 fn trigger_export(world: &mut World, target_id: &str) {
     if let Some(mut state) = world.get_resource_mut::<BuildMenuState>() {
         state.0 = false;
     }
 
     let mut project = world.resource::<crate::ui::hub::ActiveProject>().clone();
-    if project.project_dir.is_none() {
+
+    // If no project selected or project points to Bevy-Editor itself, prompt user to pick their game project folder
+    let needs_selection = match &project.project_dir {
+        None => true,
+        Some(dir) => is_editor_repository(dir),
+    };
+
+    if needs_selection {
+        info!("No user game project selected (or pointed to Bevy-Editor). Requesting user project folder...");
         let Some(project_dir) = rfd::FileDialog::new()
-            .set_title("Select the Cargo project to build")
+            .set_title("Select User Game Project Folder (containing Cargo.toml)")
             .pick_folder()
         else {
+            info!("Build cancelled by user (no folder selected).");
             return;
         };
+        if is_editor_repository(&project_dir) {
+            warn!("Selected folder is Bevy-Editor itself! Please select a standalone game project.");
+            if let Some(mut status) = world.get_resource_mut::<crate::export::ExportStatus>() {
+                *status = crate::export::ExportStatus::Failed {
+                    target: format!("Build {target_id}"),
+                    error: "Cannot build Bevy-Editor as a target game. Please choose your user project.".to_string(),
+                };
+            }
+            return;
+        }
         if !project_dir.join("Cargo.toml").is_file() {
             warn!("Selected project folder does not contain Cargo.toml: {}", project_dir.display());
             return;
