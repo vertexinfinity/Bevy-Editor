@@ -34,7 +34,17 @@ edition = "2024"
 [workspace]
 
 [dependencies]
-bevy = "0.15"
+bevy = {{ version = "0.15", default-features = false, features = [
+    "bevy_core_pipeline",
+    "bevy_pbr",
+    "bevy_render",
+    "bevy_winit",
+    "bevy_asset",
+    "bevy_gltf",
+    "bevy_scene",
+    "tonemapping_luts",
+    "png",
+] }}
 
 [profile.dev]
 opt-level = 1
