@@ -113,6 +113,7 @@ impl Plugin for EditorUiPlugin {
                     menu::handle_menu_actions,
                     menu::update_dropdown_menus_visibility,
                     menu::handle_switch_workspace,
+                    menu::update_window_and_menu_title,
                     menu::update_mcp_bridge_status,
                     tools_bar::update_active_tool_highlight,
                     hierarchy::update_hierarchy_list,
@@ -120,6 +121,12 @@ impl Plugin for EditorUiPlugin {
                     hierarchy::handle_hierarchy_collapse,
                     hierarchy::handle_hierarchy_search_input,
                     status_bar::update_status_bar,
+                )
+                    .run_if(in_state(EditorAppState::InEditor)),
+            )
+            .add_systems(
+                Update,
+                (
                     asset_browser::handle_spawn_asset_messages,
                     asset_browser::handle_explorer_dock_and_refresh,
                     asset_browser::handle_create_asset_actions,

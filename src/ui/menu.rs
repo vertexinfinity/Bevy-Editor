@@ -78,6 +78,9 @@ pub struct SwitchWorkspaceMessage(pub WorkspacePreset);
 #[derive(Component)]
 pub struct WorkspaceSelectorLabel;
 
+#[derive(Component)]
+pub struct WindowTitleLabel;
+
 #[derive(Resource, Default)]
 pub struct FileMenuState(pub bool);
 
@@ -301,6 +304,38 @@ pub fn spawn_menu_bar(mut commands: Commands, current_ws: Res<ActiveWorkspace>) 
         },
         TextColor(TEXT_PRIMARY),
         ChildOf(quick_save_btn),
+    ));
+
+    // Center Container: Active Project - Scene Name Display Pill
+    let center_title_pill = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                padding: UiRect::axes(px(12), px(3)),
+                border: UiRect::all(px(1)),
+                border_radius: radius_button(),
+                ..default()
+            },
+            BackgroundColor(BG_CARD),
+            BorderColor::all(BORDER_SUBTLE),
+            ChildOf(bar_root),
+        ))
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        WindowTitleLabel,
+        Pickable::IGNORE,
+        Text::new("Bevylite — [No Project] - Untitled Scene"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(11.5),
+            weight: FontWeight::MEDIUM,
+            ..default()
+        },
+        TextColor(TEXT_SECONDARY),
+        ChildOf(center_title_pill),
     ));
 
     // 2. Right Container: Platform Exports + Workspace Switcher + MCP Status
@@ -753,7 +788,22 @@ pub fn handle_menu_actions(world: &mut World) {
             MenuAction::SaveScene => {
                 let existing_path = world.resource::<CurrentScene>().file_path.clone();
                 if let Some(path) = existing_path {
-                    let _ = save_load::save_world_to_scene(world, &path);
+                    if let Some(parent) = path.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    if let Ok(()) = save_load::save_world_to_scene(world, &path) {
+                        info!("Saved scene to {}", path.display());
+                        if let Some(mut current_scene) = world.get_resource_mut::<CurrentScene>() {
+                            current_scene.is_modified = false;
+                        }
+                        if let Some(mut status) = world.get_resource_mut::<crate::export::ExportStatus>() {
+                            *status = crate::export::ExportStatus::Success {
+                                target: "Scene Saved".to_string(),
+                                message: format!("Saved scene to {}", path.file_name().and_then(|n| n.to_str()).unwrap_or("scene.bsn")),
+                                path,
+                            };
+                        }
+                    }
                 } else {
                     save_as_dialog(world);
                 }
@@ -873,10 +923,21 @@ fn save_as_dialog(world: &mut World) {
         .set_file_name("scene.bsn")
         .save_file()
     {
+        if let Some(parent) = file.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
         if let Ok(()) = save_load::save_world_to_scene(world, &file) {
+            info!("Saved scene to {}", file.display());
             if let Some(mut current_scene) = world.get_resource_mut::<CurrentScene>() {
-                current_scene.file_path = Some(file);
+                current_scene.file_path = Some(file.clone());
                 current_scene.is_modified = false;
+            }
+            if let Some(mut status) = world.get_resource_mut::<crate::export::ExportStatus>() {
+                *status = crate::export::ExportStatus::Success {
+                    target: "Scene Saved".to_string(),
+                    message: format!("Saved scene to {}", file.file_name().and_then(|n| n.to_str()).unwrap_or("scene.bsn")),
+                    path: file,
+                };
             }
         }
     }
@@ -944,7 +1005,26 @@ fn trigger_export(world: &mut World, target_id: &str) {
         let parent = project_dir.parent().unwrap_or(&project_dir);
         parent.join(format!("{}-build", project.name.as_deref().unwrap_or("BevyGame")))
     });
-    let current_scene_path = world.resource::<CurrentScene>().file_path.clone();
+
+    // Ensure active scene is saved to disk before building so the export always includes it
+    let mut current_scene_path = world.resource::<CurrentScene>().file_path.clone();
+    if current_scene_path.is_none() {
+        let scenes_dir = project_dir.join("assets").join("scenes");
+        let _ = std::fs::create_dir_all(&scenes_dir);
+        let auto_scene = scenes_dir.join("default_scene.bsn");
+        if let Ok(()) = save_load::save_world_to_scene(world, &auto_scene) {
+            info!("Auto-saved active editor scene to {}", auto_scene.display());
+            if let Some(mut cur) = world.get_resource_mut::<CurrentScene>() {
+                cur.file_path = Some(auto_scene.clone());
+                cur.is_modified = false;
+            }
+            current_scene_path = Some(auto_scene);
+        }
+    } else if let Some(ref path) = current_scene_path {
+        // Save any pending changes to current scene before build
+        let _ = save_load::save_world_to_scene(world, path);
+    }
+
     world.write_message(RequestExportMessage {
         target_id: target_id.to_string(),
         output_dir,
@@ -1109,4 +1189,53 @@ pub fn handle_switch_workspace(
         }
     }
 }
+
+/// Dynamically updates both the OS native Window title and the top menu bar title pill
+/// to reflect the format: "(project name - scene name)".
+pub fn update_window_and_menu_title(
+    active_project: Res<crate::ui::hub::ActiveProject>,
+    current_scene: Res<CurrentScene>,
+    mut windows: Query<&mut Window>,
+    mut title_labels: Query<&mut Text, With<WindowTitleLabel>>,
+) {
+    if !active_project.is_changed() && !current_scene.is_changed() {
+        return;
+    }
+
+    let project_name = active_project
+        .name
+        .clone()
+        .or_else(|| {
+            active_project
+                .project_dir
+                .as_ref()
+                .and_then(|p| p.file_name())
+                .and_then(|n| n.to_str())
+                .map(|s| s.to_string())
+        })
+        .unwrap_or_else(|| "No Project".to_string());
+
+    let scene_name = match &current_scene.file_path {
+        Some(path) => path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("scene.bsn")
+            .to_string(),
+        None => "Untitled Scene".to_string(),
+    };
+
+    let title_string = format!("{} - {}{}", project_name, scene_name, if current_scene.is_modified { " *" } else { "" });
+    let window_title = format!("Bevy Editor — Bevylite ({})", title_string);
+
+    for mut window in &mut windows {
+        if window.title != window_title {
+            window.title = window_title.clone();
+        }
+    }
+
+    for mut text in &mut title_labels {
+        text.0 = title_string.clone();
+    }
+}
+
 
