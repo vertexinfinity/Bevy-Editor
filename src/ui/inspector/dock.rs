@@ -600,7 +600,9 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
     let script_card = commands
         .spawn((
             EditorInternal,
+            ScriptCardRoot,
             Node {
+                display: Display::None,
                 flex_direction: FlexDirection::Column,
                 padding: UiRect::all(SPACE_COMPACT),
                 row_gap: px(6),

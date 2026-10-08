@@ -75,6 +75,9 @@ pub struct TransformAxisValue {
 pub struct InspectorAddMenu;
 
 #[derive(Component)]
+pub struct ScriptCardRoot;
+
+#[derive(Component)]
 pub struct ScriptPropsLabel;
 
 // Messages for Inspector Actions

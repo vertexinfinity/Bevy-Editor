@@ -308,6 +308,7 @@ pub fn update_clean_transform_labels(
     mut axis_labels: Query<(&TransformAxisValue, &mut Text), With<TransformAxisValue>>,
     mut badges_label: Query<&mut Text, (With<ComponentsBadgesLabel>, Without<SelectedEntityLabel>, Without<TransformAxisValue>, Without<ScriptPropsLabel>)>,
     mut script_label: Query<&mut Text, (With<ScriptPropsLabel>, Without<SelectedEntityLabel>, Without<TransformAxisValue>, Without<ComponentsBadgesLabel>)>,
+    mut script_card_query: Query<&mut Node, (With<ScriptCardRoot>, Without<CleanViewRoot>, Without<DebugViewRoot>)>,
 ) {
     let Ok(mut name_txt) = name_label.single_mut() else { return };
     let Ok(mut badges_txt) = badges_label.single_mut() else { return };
@@ -384,7 +385,10 @@ pub fn update_clean_transform_labels(
         badges.join(" ")
     };
 
-    // Display ScriptComponent properties if present
+    if let Ok(mut card_node) = script_card_query.single_mut() {
+        card_node.display = if script.is_some() { Display::Flex } else { Display::None };
+    }
+
     if let Some(script_comp) = script {
         let mut lines = Vec::new();
         lines.push(format!("File: {}", script_comp.script_file));
@@ -399,6 +403,6 @@ pub fn update_clean_transform_labels(
         }
         script_txt.0 = lines.join("\n");
     } else {
-        script_txt.0 = "No ScriptComponent attached".to_string();
+        script_txt.0 = String::new();
     }
 }
