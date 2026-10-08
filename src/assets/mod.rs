@@ -99,11 +99,10 @@ pub struct {base_name} {{
 r#"(
   resources: {{}},
   entities: {{
-    0: (
+    "1v0": (
       components: {{
-        "bevy_core::name::Name": (
-          name: "{base_name}",
-        ),
+        "bevy_ecs::name::Name": "{base_name}",
+        "bevy_editor_lib::scene::save_load::SceneEntity": (),
         "bevy_transform::components::transform::Transform": (
           translation: (0.0, 0.0, 0.0),
           rotation: (0.0, 0.0, 0.0, 1.0),

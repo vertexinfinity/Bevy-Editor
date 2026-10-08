@@ -14,6 +14,9 @@ pub struct ActiveContextChip;
 #[derive(Component)]
 pub struct FpsCounterLabel;
 
+#[derive(Component)]
+pub struct SystemAlertChip;
+
 pub fn spawn_status_bar(mut commands: Commands) {
     let bar_root = commands
         .spawn((
@@ -78,7 +81,7 @@ pub fn spawn_status_bar(mut commands: Commands) {
         ChildOf(left_container),
     ));
 
-    // Right container: FPS badge + Active context badge + Engine info
+    // Right container: System Alert chip + FPS badge + Active context badge + Engine info
     let right_container = commands
         .spawn((
             EditorInternal,
@@ -92,6 +95,38 @@ pub fn spawn_status_bar(mut commands: Commands) {
             ChildOf(bar_root),
         ))
         .id();
+
+    // System Warning Alert Chip (Low RAM / Low Disk)
+    let alert_chip = commands
+        .spawn((
+            EditorInternal,
+            SystemAlertChip,
+            Node {
+                padding: UiRect::axes(px(6), px(2)),
+                border_radius: radius_button(),
+                border: UiRect::all(px(1)),
+                align_items: AlignItems::Center,
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(BG_CARD),
+            BorderColor::all(ACCENT_AMBER),
+            ChildOf(right_container),
+        ))
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new("⚠️ System Warning"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(10.0),
+            weight: FontWeight::MEDIUM,
+            ..default()
+        },
+        TextColor(ACCENT_AMBER),
+        ChildOf(alert_chip),
+    ));
 
     // FPS diagnostic chip
     let fps_chip = commands
@@ -165,14 +200,67 @@ pub fn spawn_status_bar(mut commands: Commands) {
     ));
 }
 
+/// Helper function to get free disk space in GiB for a given directory path on Windows / Unix.
+fn get_available_disk_gib(path: &std::path::Path) -> Option<f64> {
+    #[cfg(windows)]
+    {
+        use std::ffi::OsStr;
+        use std::os::windows::ffi::OsStrExt;
+
+        let wide_path: Vec<u16> = OsStr::new(path.as_os_str())
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+
+        #[link(name = "kernel32")]
+        unsafe extern "system" {
+            fn GetDiskFreeSpaceExW(
+                lpDirectoryName: *const u16,
+                lpFreeBytesAvailableToCaller: *mut u64,
+                lpTotalNumberOfBytes: *mut u64,
+                lpTotalNumberOfFreeBytes: *mut u64,
+            ) -> i32;
+        }
+
+        let mut free_bytes_caller = 0u64;
+        let mut total_bytes = 0u64;
+        let mut total_free = 0u64;
+
+        let res = unsafe {
+            GetDiskFreeSpaceExW(
+                wide_path.as_ptr(),
+                &mut free_bytes_caller,
+                &mut total_bytes,
+                &mut total_free,
+            )
+        };
+
+        if res != 0 {
+            Some(free_bytes_caller as f64 / (1024.0 * 1024.0 * 1024.0))
+        } else {
+            None
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+        None
+    }
+}
+
 pub fn update_status_bar(
     time: Res<Time>,
     export_status: Res<ExportStatus>,
     selection: Res<InspectorSelection>,
+    diagnostics: Res<bevy::diagnostic::DiagnosticsStore>,
     name_query: Query<Option<&Name>>,
     mut text_query: Query<&mut Text, (With<StatusText>, Without<ActiveContextChip>, Without<FpsCounterLabel>)>,
     mut chip_query: Query<&mut Text, (With<ActiveContextChip>, Without<StatusText>, Without<FpsCounterLabel>)>,
     mut fps_query: Query<&mut Text, (With<FpsCounterLabel>, Without<StatusText>, Without<ActiveContextChip>)>,
+    mut alert_query: Query<(&mut Node, &mut BorderColor, &Children), With<SystemAlertChip>>,
+    mut alert_text_query: Query<&mut Text, (Without<StatusText>, Without<ActiveContextChip>, Without<FpsCounterLabel>)>,
+    mut check_timer: Local<f32>,
+    mut cached_warning: Local<Option<(String, bool)>>, // (Message, is_critical)
 ) {
     // Smooth FPS calculation
     if let Ok(mut fps_text) = fps_query.single_mut() {
@@ -180,6 +268,55 @@ pub fn update_status_bar(
         if delta > 0.0001 {
             let fps = (1.0 / delta).round() as u32;
             fps_text.0 = format!("{fps} FPS");
+        }
+    }
+
+    // Periodic system resource checks (every 3 seconds)
+    *check_timer += time.delta_secs();
+    if *check_timer >= 3.0 {
+        *check_timer = 0.0;
+
+        let mut warning = None;
+
+        // Check RAM usage from DiagnosticsStore
+        if let Some(diag) = diagnostics.get(&bevy::diagnostic::SystemInformationDiagnosticsPlugin::SYSTEM_MEM_USAGE) {
+            if let Some(mem_pct) = diag.smoothed() {
+                if mem_pct >= 90.0 {
+                    warning = Some((format!("⚠️ Critically Low RAM ({mem_pct:.0}%)"), true));
+                } else if mem_pct >= 82.0 {
+                    warning = Some((format!("⚠️ Low RAM ({mem_pct:.0}%)"), false));
+                }
+            }
+        }
+
+        // Check Disk space on active working directory
+        if warning.is_none() {
+            if let Ok(cur_dir) = std::env::current_dir() {
+                if let Some(free_gib) = get_available_disk_gib(&cur_dir) {
+                    if free_gib < 2.0 {
+                        warning = Some((format!("⚠️ Low Disk Space ({free_gib:.1} GB)"), true));
+                    } else if free_gib < 5.0 {
+                        warning = Some((format!("⚠️ Low Disk ({free_gib:.1} GB)"), false));
+                    }
+                }
+            }
+        }
+
+        *cached_warning = warning;
+    }
+
+    // Update Alert Chip UI
+    if let Ok((mut alert_node, mut alert_border, children)) = alert_query.single_mut() {
+        if let Some((msg, is_crit)) = cached_warning.as_ref() {
+            alert_node.display = Display::Flex;
+            *alert_border = BorderColor::all(if *is_crit { ACCENT_CRIMSON } else { ACCENT_AMBER });
+            for child in children.iter() {
+                if let Ok(mut text) = alert_text_query.get_mut(child) {
+                    text.0 = msg.clone();
+                }
+            }
+        } else {
+            alert_node.display = Display::None;
         }
     }
 
@@ -220,3 +357,4 @@ pub fn update_status_bar(
         }
     }
 }
+

@@ -1,0 +1,16 @@
+(
+  resources: {},
+  entities: {
+    "1v0": (
+      components: {
+        "bevy_ecs::name::Name": "scene_966",
+        "bevy_editor_lib::scene::save_load::SceneEntity": (),
+        "bevy_transform::components::transform::Transform": (
+          translation: (0.0, 0.0, 0.0),
+          rotation: (0.0, 0.0, 0.0, 1.0),
+          scale: (1.0, 1.0, 1.0),
+        ),
+      },
+    ),
+  },
+)

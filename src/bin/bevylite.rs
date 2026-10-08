@@ -700,11 +700,9 @@ fn create_scene_ron(path: &Path, preset: &str) -> Result<String, String> {
             r#"(
   resources: {},
   entities: {
-    0: (
+    "1v0": (
       components: {
-        "bevy_core::name::Name": (
-          name: "Main Camera",
-        ),
+        "bevy_ecs::name::Name": "Main Camera",
         "bevy_transform::components::transform::Transform": (
           translation: (0.0, 3.0, 7.0),
           rotation: (-0.20, 0.00, 0.00, 0.97),
@@ -713,11 +711,9 @@ fn create_scene_ron(path: &Path, preset: &str) -> Result<String, String> {
         "bevy_render::camera::camera::Camera3d": (),
       },
     ),
-    1: (
+    "2v0": (
       components: {
-        "bevy_core::name::Name": (
-          name: "Directional Light",
-        ),
+        "bevy_ecs::name::Name": "Directional Light",
         "bevy_transform::components::transform::Transform": (
           translation: (4.00, 10.00, 4.00),
           rotation: (-0.38, 0.38, -0.16, 0.82),
@@ -725,7 +721,7 @@ fn create_scene_ron(path: &Path, preset: &str) -> Result<String, String> {
         ),
         "bevy_light::directional_light::DirectionalLight": (
           illuminance: 10000.0,
-          shadow_maps_enabled: true,
+          shadows_enabled: true,
         ),
       },
     ),
@@ -742,11 +738,9 @@ fn create_scene_ron(path: &Path, preset: &str) -> Result<String, String> {
             r#"(
   resources: {},
   entities: {
-    0: (
+    "1v0": (
       components: {
-        "bevy_core::name::Name": (
-          name: "Main Camera",
-        ),
+        "bevy_ecs::name::Name": "Main Camera",
         "bevy_transform::components::transform::Transform": (
           translation: (0.00, 4.00, 8.00),
           rotation: (-0.25, 0.00, 0.00, 0.96),
@@ -755,11 +749,9 @@ fn create_scene_ron(path: &Path, preset: &str) -> Result<String, String> {
         "bevy_render::camera::camera::Camera3d": (),
       },
     ),
-    1: (
+    "2v0": (
       components: {
-        "bevy_core::name::Name": (
-          name: "Sun Light",
-        ),
+        "bevy_ecs::name::Name": "Sun Light",
         "bevy_transform::components::transform::Transform": (
           translation: (5.00, 12.00, 5.00),
           rotation: (-0.38, 0.38, -0.16, 0.82),
@@ -767,15 +759,13 @@ fn create_scene_ron(path: &Path, preset: &str) -> Result<String, String> {
         ),
         "bevy_light::directional_light::DirectionalLight": (
           illuminance: 12000.0,
-          shadow_maps_enabled: true,
+          shadows_enabled: true,
         ),
       },
     ),
-    2: (
+    "3v0": (
       components: {
-        "bevy_core::name::Name": (
-          name: "Player Cube",
-        ),
+        "bevy_ecs::name::Name": "Player Cube",
         "bevy_transform::components::transform::Transform": (
           translation: (0.00, 1.00, 0.00),
           rotation: (0.00, 0.00, 0.00, 1.00),
@@ -784,11 +774,9 @@ fn create_scene_ron(path: &Path, preset: &str) -> Result<String, String> {
         "bevy_render::mesh::Mesh3d": (),
       },
     ),
-    3: (
+    "4v0": (
       components: {
-        "bevy_core::name::Name": (
-          name: "Ground Plane",
-        ),
+        "bevy_ecs::name::Name": "Ground Plane",
         "bevy_transform::components::transform::Transform": (
           translation: (0.00, 0.00, 0.00),
           rotation: (0.00, 0.00, 0.00, 1.00),
