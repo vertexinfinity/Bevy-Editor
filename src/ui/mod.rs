@@ -4,6 +4,7 @@ pub mod asset_browser;
 pub mod hierarchy;
 pub mod hub;
 pub mod inspector;
+pub mod panel;
 pub mod menu;
 pub mod play_bar;
 pub mod status_bar;
@@ -59,6 +60,7 @@ impl Plugin for EditorUiPlugin {
             .init_resource::<inspector::InspectorState>()
             .init_resource::<asset_browser::AssetBrowserState>()
             .init_resource::<asset_browser::HoveredAssetDirectory>()
+            .init_resource::<asset_browser::LastAssetClick>()
             .init_resource::<menu::McpBridgeState>()
             // Register messages
             .add_message::<menu::MenuActionMessage>()
@@ -70,12 +72,16 @@ impl Plugin for EditorUiPlugin {
             .add_message::<asset_browser::RefreshAssetBrowserMessage>()
             .add_message::<asset_browser::NavigateAssetFolderMessage>()
             .add_message::<asset_browser::SetAssetFilterMessage>()
+            .add_message::<asset_browser::CreateAssetAction>()
             .add_message::<inspector::ToggleDebugModeMessage>()
             .add_message::<inspector::ToggleDockMessage>()
             .add_message::<inspector::ToggleCoordModeMessage>()
             .add_message::<inspector::TransformNudgeAction>()
             .add_message::<inspector::AddComponentKind>()
             .add_message::<inspector::ScriptPropAction>()
+            .add_message::<panel::TogglePanelMessage>()
+            .add_message::<panel::TogglePanelCollapseMessage>()
+            .add_message::<panel::SetPanelDockMessage>()
             // Global 3D scene picking observer
             .add_observer(inspector::select_entity_on_viewport_click)
             // PreStartup / Startup UI systems
@@ -115,11 +121,14 @@ impl Plugin for EditorUiPlugin {
                     status_bar::update_status_bar,
                     asset_browser::handle_spawn_asset_messages,
                     asset_browser::handle_explorer_dock_and_refresh,
+                    asset_browser::handle_create_asset_actions,
                     inspector::handle_inspector_toggle_messages,
                     inspector::handle_transform_nudges,
                     inspector::handle_add_component_actions,
                     inspector::handle_script_prop_actions,
                     inspector::update_clean_transform_labels,
+                    panel::systems::handle_panel_collapse_messages,
+                    panel::systems::handle_panel_visibility_messages,
                 )
                     .run_if(in_state(EditorAppState::InEditor)),
             );

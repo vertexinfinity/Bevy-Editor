@@ -2,6 +2,7 @@
 
 use std::fs;
 use std::process::Command;
+use bevy::log::info;
 use crate::export::{ExportContext, ExportResult, Exporter};
 
 #[derive(Default)]
@@ -43,6 +44,20 @@ impl Exporter for WindowsExporter {
                 let file_name = scene_path.file_name().unwrap_or_default();
                 let dest = assets_dir.join(file_name);
                 fs::copy(scene_path, &dest).map_err(|e| format!("Failed to copy scene asset: {e}"))?;
+            }
+        }
+
+        // Verify & resolve Cargo dependencies first
+        info!("Resolving project dependencies for {}...", manifest_path.display());
+        let check_res = Command::new("cargo")
+            .current_dir(&project_dir)
+            .args(["check", "--manifest-path"])
+            .arg(&manifest_path)
+            .output();
+        if let Ok(check_out) = check_res {
+            if !check_out.status.success() {
+                let err_msg = String::from_utf8_lossy(&check_out.stderr);
+                return Err(format!("Dependency resolution or cargo check failed: {err_msg}"));
             }
         }
 

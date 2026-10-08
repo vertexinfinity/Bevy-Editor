@@ -1,5 +1,6 @@
 use std::fs;
 use std::process::Command;
+use bevy::log::info;
 use crate::export::{ExportContext, ExportResult, Exporter};
 
 #[derive(Default)]
@@ -43,7 +44,7 @@ impl Exporter for AndroidExporter {
             }
         }
 
-        // 3. Check if cargo-apk is installed
+        // 3. Check dependencies & toolchain for Android
         let has_cargo_apk = Command::new("cargo")
             .args(["apk", "--version"])
             .output()
@@ -51,6 +52,20 @@ impl Exporter for AndroidExporter {
             .unwrap_or(false);
 
         if has_cargo_apk {
+            // Verify or install rust target aarch64-linux-android
+            let target_check = Command::new("rustup")
+                .args(["target", "list", "--installed"])
+                .output();
+            if let Ok(out) = target_check {
+                let targets = String::from_utf8_lossy(&out.stdout);
+                if !targets.contains("aarch64-linux-android") {
+                    info!("Resolving missing Android Rust target: adding aarch64-linux-android via rustup...");
+                    let _ = Command::new("rustup")
+                        .args(["target", "add", "aarch64-linux-android"])
+                        .status();
+                }
+            }
+
             // Run cargo-apk build
             let mut cmd = Command::new("cargo");
             cmd.current_dir(&project_dir)
@@ -68,7 +83,7 @@ impl Exporter for AndroidExporter {
 
             Ok(ExportResult {
                 primary_artifact: export_dir.clone(),
-                message: format!("Android APK successfully built for target aarch64-linux-android"),
+                message: format!("Android APK successfully built for target aarch64-linux-android in {:?}", export_dir.join("target")),
             })
         } else {
             // Scaffold the Android Gradle project based on Bevy mobile template

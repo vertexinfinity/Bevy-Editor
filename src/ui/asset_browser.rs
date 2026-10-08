@@ -105,6 +105,20 @@ impl AssetCategoryFilter {
     }
 }
 
+/// Tracks double-click timing to open files in system default editor (e.g. VS Code).
+#[derive(Resource, Default)]
+pub struct LastAssetClick {
+    pub path: Option<PathBuf>,
+    pub timestamp: f64,
+}
+
+/// Message to request creating a new asset file from template.
+#[derive(Message, Clone, Debug)]
+pub struct CreateAssetAction {
+    pub kind: crate::assets::AssetTemplateKind,
+    pub name: String,
+}
+
 /// Message to set the active asset category filter.
 #[derive(Message, Clone, Copy, Debug)]
 pub struct SetAssetFilterMessage(pub AssetCategoryFilter);
@@ -212,6 +226,100 @@ pub fn spawn_asset_browser(mut commands: Commands, state: Res<AssetBrowserState>
             ChildOf(header),
         ))
         .id();
+
+    // + New Script Button
+    let new_script_btn = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                padding: UiRect::axes(px(6), px(2)),
+                border: UiRect::all(px(1)),
+                border_radius: radius_button(),
+                ..default()
+            },
+            BackgroundColor(BG_INPUT),
+            BorderColor::all(BORDER_SUBTLE),
+            ChildOf(header_right),
+        ))
+        .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_HOVER);
+            }
+        })
+        .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_INPUT);
+            }
+        })
+        .observe(|click: On<PointerClick>, _state: Res<AssetBrowserState>, mut writer: MessageWriter<CreateAssetAction>| {
+            if click.button == PointerButton::Primary {
+                let name = format!("script_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() % 1000).unwrap_or(1));
+                writer.write(CreateAssetAction {
+                    kind: crate::assets::AssetTemplateKind::LuaScript,
+                    name,
+                });
+            }
+        })
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new("+ Script"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(10.5),
+            ..default()
+        },
+        TextColor(ACCENT_CYAN),
+        ChildOf(new_script_btn),
+    ));
+
+    // + New Scene Button
+    let new_scene_btn = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                padding: UiRect::axes(px(6), px(2)),
+                border: UiRect::all(px(1)),
+                border_radius: radius_button(),
+                ..default()
+            },
+            BackgroundColor(BG_INPUT),
+            BorderColor::all(BORDER_SUBTLE),
+            ChildOf(header_right),
+        ))
+        .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_HOVER);
+            }
+        })
+        .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_INPUT);
+            }
+        })
+        .observe(|click: On<PointerClick>, mut writer: MessageWriter<CreateAssetAction>| {
+            if click.button == PointerButton::Primary {
+                let name = format!("scene_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() % 1000).unwrap_or(1));
+                writer.write(CreateAssetAction {
+                    kind: crate::assets::AssetTemplateKind::SceneRon,
+                    name,
+                });
+            }
+        })
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new("+ Scene"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(10.5),
+            ..default()
+        },
+        TextColor(TEXT_PRIMARY),
+        ChildOf(new_scene_btn),
+    ));
 
     // Up / Back Button
     let up_btn = commands
@@ -538,15 +646,28 @@ fn populate_asset_list(
                     *bg = BackgroundColor(BG_CARD);
                 }
             })
-            .observe(move |click: On<PointerClick>, query: Query<&AssetItem>, mut spawn_writer: MessageWriter<SpawnAssetMessage>, mut nav_writer: MessageWriter<NavigateAssetFolderMessage>| {
+            .observe(move |click: On<PointerClick>, query: Query<&AssetItem>, time: Res<Time>, mut last_click: ResMut<LastAssetClick>, mut spawn_writer: MessageWriter<SpawnAssetMessage>, mut nav_writer: MessageWriter<NavigateAssetFolderMessage>| {
                 if click.button == PointerButton::Primary {
                     if let Ok(item) = query.get(click.entity) {
                         if item.is_dir {
                             // Click directory: navigate into it!
                             nav_writer.write(NavigateAssetFolderMessage(item.file_path.clone()));
                         } else {
-                            // Click file: spawn into 3D scene!
-                            spawn_writer.write(SpawnAssetMessage(item.clone()));
+                            let current_time = time.elapsed_secs_f64();
+                            let is_double_click = last_click.path.as_ref() == Some(&item.file_path)
+                                && (current_time - last_click.timestamp) < 0.35;
+
+                            if is_double_click {
+                                // Double click: Open in OS default editor (VS Code)
+                                let _ = crate::assets::AssetCreator::open_in_system_editor(&item.file_path);
+                                last_click.path = None;
+                                last_click.timestamp = 0.0;
+                            } else {
+                                // Single click: update tracking and spawn into 3D scene
+                                last_click.path = Some(item.file_path.clone());
+                                last_click.timestamp = current_time;
+                                spawn_writer.write(SpawnAssetMessage(item.clone()));
+                            }
                         }
                     }
                 }
@@ -692,6 +813,27 @@ pub fn handle_spawn_asset_messages(
                 };
             }
             _ => {}
+        }
+    }
+}
+
+/// System handling asset creation requests from the Asset Browser.
+pub fn handle_create_asset_actions(
+    mut actions: MessageReader<CreateAssetAction>,
+    state: Res<AssetBrowserState>,
+    mut refresh_writer: MessageWriter<RefreshAssetBrowserMessage>,
+) {
+    for action in actions.read() {
+        let dir = &state.current_dir;
+        match crate::assets::AssetCreator::create_asset(dir, &action.name, action.kind) {
+            Ok(created_path) => {
+                info!("Created new asset: {:?}", created_path);
+                let _ = crate::assets::AssetCreator::open_in_system_editor(&created_path);
+                refresh_writer.write(RefreshAssetBrowserMessage);
+            }
+            Err(e) => {
+                error!("Failed to create asset: {}", e);
+            }
         }
     }
 }

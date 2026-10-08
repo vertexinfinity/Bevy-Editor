@@ -1,4 +1,4 @@
-﻿//! Components card, Add Component menu tree, and component insertion systems.
+//! Components card, Add Component menu tree, and component insertion systems.
 use std::path::{Path, PathBuf};
 use std::fs;
 use bevy::{ecs::message::{MessageReader, MessageWriter}, picking::{events::{PointerClick, PointerOut, PointerOver}, pointer::PointerButton}, prelude::*, inspector::InspectorSelection};
@@ -277,6 +277,24 @@ pub fn handle_add_component_actions(
                     ..default()
                 });
                 commands.entity(selected).insert((Mesh3d(mesh), MeshMaterial3d(material)));
+            }
+            AddComponentKind::NewScript => {
+                let script_name = format!("actor_{}", selected.index());
+                let script_dir = Path::new("assets").join("scripts");
+                match crate::assets::AssetCreator::create_asset(&script_dir, &script_name, crate::assets::AssetTemplateKind::LuaScript) {
+                    Ok(created_path) => {
+                        let rel_path = format!("scripts/{}.lua", script_name);
+                        commands.entity(selected).insert(ScriptComponent {
+                            script_file: rel_path,
+                            ..default()
+                        });
+                        let _ = crate::assets::AssetCreator::open_in_system_editor(&created_path);
+                        info!("Created and attached new script at {:?}", created_path);
+                    }
+                    Err(err) => {
+                        error!("Failed to create script: {}", err);
+                    }
+                }
             }
             AddComponentKind::Script => {
                 commands.entity(selected).insert(ScriptComponent::default());

@@ -427,6 +427,30 @@ fn handle_mcp() {
                                 }
                             },
                             {
+                                "name": "bevylite_create_script",
+                                "description": "Creates a new script file (Lua, Rhai, or Rust) from standard Bevylite template.",
+                                "inputSchema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": { "type": "string", "description": "Base name of the script (e.g. 'player_controller')" },
+                                        "kind": { "type": "string", "enum": ["lua", "rhai", "rs"], "description": "Script type (lua, rhai, rs)" },
+                                        "dir": { "type": "string", "description": "Directory relative to project or assets (defaults to 'assets/scripts')" }
+                                    },
+                                    "required": ["name"]
+                                }
+                            },
+                            {
+                                "name": "bevylite_open_editor",
+                                "description": "Opens a file in the user's default system editor or IDE (e.g. VS Code).",
+                                "inputSchema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "file_path": { "type": "string", "description": "Path to file to open" }
+                                    },
+                                    "required": ["file_path"]
+                                }
+                            },
+                            {
                                 "name": "bevylite_export_build",
                                 "description": "Headlessly builds and exports game for Windows, Android, Web, or iOS.",
                                 "inputSchema": {
@@ -560,6 +584,46 @@ fn handle_mcp() {
                             Err(e) => json!({
                                 "isError": true,
                                 "content": [{ "type": "text", "text": format!("Error: {}", e) }]
+                            }),
+                        }
+                    }
+                    "bevylite_create_script" => {
+                        let name = arguments.get("name").and_then(|n| n.as_str()).unwrap_or("script");
+                        let kind_str = arguments.get("kind").and_then(|k| k.as_str()).unwrap_or("lua");
+                        let dir_str = arguments.get("dir").and_then(|d| d.as_str()).unwrap_or("assets/scripts");
+                        let kind = match kind_str {
+                            "rhai" => bevy_editor_lib::assets::AssetTemplateKind::RhaiScript,
+                            "rs" => bevy_editor_lib::assets::AssetTemplateKind::RustScript,
+                            _ => bevy_editor_lib::assets::AssetTemplateKind::LuaScript,
+                        };
+                        match bevy_editor_lib::assets::AssetCreator::create_asset(Path::new(dir_str), name, kind) {
+                            Ok(path) => {
+                                log_mcp_bridge_event("create_script", name, &path.to_string_lossy());
+                                json!({
+                                    "content": [{
+                                        "type": "text",
+                                        "text": format!("Successfully created script at {:?}", path)
+                                    }]
+                                })
+                            }
+                            Err(e) => json!({
+                                "isError": true,
+                                "content": [{ "type": "text", "text": format!("Error creating script: {}", e) }]
+                            }),
+                        }
+                    }
+                    "bevylite_open_editor" => {
+                        let file = arguments.get("file_path").and_then(|f| f.as_str()).unwrap_or("");
+                        match bevy_editor_lib::assets::AssetCreator::open_in_system_editor(Path::new(file)) {
+                            Ok(_) => json!({
+                                "content": [{
+                                    "type": "text",
+                                    "text": format!("Opened {:?} in system default editor.", file)
+                                }]
+                            }),
+                            Err(e) => json!({
+                                "isError": true,
+                                "content": [{ "type": "text", "text": format!("Failed to open editor: {}", e) }]
                             }),
                         }
                     }

@@ -720,6 +720,7 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
 
     let user_section = spawn_add_tree_branch(commands, add_menu, "User");
     let user_components = spawn_add_tree_branch(commands, user_section, "User Components");
+    spawn_add_comp_btn(commands, user_components, "+ New Script...", AddComponentKind::NewScript);
     spawn_add_comp_btn(commands, user_components, "Script Component (default)", AddComponentKind::Script);
     spawn_add_comp_btn(commands, user_components, "Spin Animation", AddComponentKind::SpinAnimation);
     spawn_add_comp_btn(commands, user_components, "Velocity", AddComponentKind::Velocity);

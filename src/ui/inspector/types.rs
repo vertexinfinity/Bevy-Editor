@@ -127,6 +127,7 @@ pub enum TransformAxis {
 
 #[derive(Message, Clone, Debug)]
 pub enum AddComponentKind {
+    NewScript,
     Script,
     ScriptAsset(String),
     MeshCube,

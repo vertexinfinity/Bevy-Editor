@@ -345,6 +345,38 @@ pub fn spawn_menu_bar(mut commands: Commands, current_ws: Res<ActiveWorkspace>) 
         TextColor(ACCENT_CYAN),
         ChildOf(layout_btn),
     ));
+
+    // Engine Version Badge & Compatibility Indicator
+    let engine_pill = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                padding: UiRect::axes(px(8), px(3)),
+                border: UiRect::all(px(1)),
+                border_radius: radius_button(),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: px(4),
+                ..default()
+            },
+            BackgroundColor(BG_CARD),
+            BorderColor::all(BORDER_SUBTLE),
+            ChildOf(right_group),
+        ))
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new("Bevy: 0.20-dev"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(10.5),
+            weight: FontWeight::MEDIUM,
+            ..default()
+        },
+        TextColor(TEXT_SECONDARY),
+        ChildOf(engine_pill),
+    ));
 }
 
 fn spawn_menu_button(
@@ -564,8 +596,8 @@ pub fn handle_menu_actions(world: &mut World) {
 
 fn save_as_dialog(world: &mut World) {
     if let Some(file) = rfd::FileDialog::new()
-        .add_filter("Bevy Scene (*.ron)", &["ron"])
-        .set_file_name("scene.ron")
+        .add_filter("Bevy Scene (*.bsn, *.ron)", &["bsn", "ron"])
+        .set_file_name("scene.bsn")
         .save_file()
     {
         if let Ok(()) = save_load::save_world_to_scene(world, &file) {

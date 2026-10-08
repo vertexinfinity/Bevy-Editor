@@ -1,5 +1,6 @@
 //! Bevy-Editor Library: Core engine, scene, export, and UI subsystems for Bevylite.
 
+pub mod assets;
 pub mod camera;
 pub mod core;
 pub mod export;
