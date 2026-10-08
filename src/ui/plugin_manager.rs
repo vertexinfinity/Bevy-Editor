@@ -26,6 +26,17 @@ pub struct PluginManagerModalRoot;
 pub struct PluginListContainer;
 
 #[derive(Component)]
+pub struct PluginScrollTrack;
+
+#[derive(Component)]
+pub struct PluginScrollThumb;
+
+#[derive(Component)]
+pub struct CategoryFilterTab {
+    pub category: Option<PluginCategory>,
+}
+
+#[derive(Component)]
 pub struct PluginSearchText;
 
 #[derive(Component)]
@@ -82,10 +93,10 @@ pub fn spawn_plugin_manager_modal(mut commands: Commands) {
         .spawn((
             EditorInternal,
             Node {
-                width: px(780),
-                max_width: percent(92.0),
-                height: px(580),
-                max_height: percent(90.0),
+                width: px(820),
+                max_width: percent(94.0),
+                height: px(590),
+                max_height: percent(92.0),
                 padding: UiRect::all(px(16)),
                 flex_direction: FlexDirection::Column,
                 border: UiRect::all(px(1)),
@@ -211,42 +222,168 @@ pub fn spawn_plugin_manager_modal(mut commands: Commands) {
                 flex_direction: FlexDirection::Row,
                 column_gap: px(6),
                 align_items: AlignItems::Center,
+                flex_wrap: FlexWrap::Wrap,
+                row_gap: px(4),
                 ..default()
             },
             ChildOf(dialog),
         ))
         .id();
 
-    spawn_category_filter_tab(&mut commands, categories_bar, "All Plugins", None);
-    spawn_category_filter_tab(&mut commands, categories_bar, "Engine & Core", Some(PluginCategory::Core));
-    spawn_category_filter_tab(&mut commands, categories_bar, "Physics", Some(PluginCategory::Physics));
-    spawn_category_filter_tab(&mut commands, categories_bar, "Graphics & VFX", Some(PluginCategory::Rendering));
-    spawn_category_filter_tab(&mut commands, categories_bar, "Audio", Some(PluginCategory::Audio));
-    spawn_category_filter_tab(&mut commands, categories_bar, "UI", Some(PluginCategory::UI));
-    spawn_category_filter_tab(&mut commands, categories_bar, "Scripting", Some(PluginCategory::Scripting));
+    spawn_category_filter_tab(&mut commands, categories_bar, "All Plugins", None, true);
+    spawn_category_filter_tab(&mut commands, categories_bar, "Engine & Core", Some(PluginCategory::Core), false);
+    spawn_category_filter_tab(&mut commands, categories_bar, "Physics", Some(PluginCategory::Physics), false);
+    spawn_category_filter_tab(&mut commands, categories_bar, "Graphics & VFX", Some(PluginCategory::Rendering), false);
+    spawn_category_filter_tab(&mut commands, categories_bar, "Audio", Some(PluginCategory::Audio), false);
+    spawn_category_filter_tab(&mut commands, categories_bar, "UI", Some(PluginCategory::UI), false);
+    spawn_category_filter_tab(&mut commands, categories_bar, "Scripting", Some(PluginCategory::Scripting), false);
+
+    // List wrapper row (contains scrollable items + visual scrollbar track)
+    let list_wrapper = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                width: percent(100.0),
+                flex_grow: 1.0,
+                flex_direction: FlexDirection::Row,
+                column_gap: px(6),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            ChildOf(dialog),
+        ))
+        .id();
 
     // Scrollable crate list container
     let list_scroll = commands
         .spawn((
             EditorInternal,
             PluginListContainer,
+            ScrollPosition::default(),
             Node {
-                width: percent(100.0),
                 flex_grow: 1.0,
+                height: percent(100.0),
                 flex_direction: FlexDirection::Column,
                 row_gap: px(6),
-                overflow: Overflow::clip_y(),
-                padding: UiRect::axes(px(2), px(4)),
+                overflow: Overflow::scroll_y(),
+                padding: UiRect::axes(px(4), px(4)),
                 ..default()
             },
-            ChildOf(dialog),
+            ChildOf(list_wrapper),
+        ))
+        .observe(|scroll: On<bevy::picking::events::PointerScroll>, mut q_scroll: Query<(&mut ScrollPosition, &ComputedNode)>| {
+            if let Ok((mut pos, computed)) = q_scroll.get_mut(scroll.entity) {
+                let delta_y = match scroll.unit {
+                    bevy::input::mouse::MouseScrollUnit::Line => scroll.y * 32.0,
+                    bevy::input::mouse::MouseScrollUnit::Pixel => scroll.y,
+                };
+                let max_offset = (computed.content_size().y - computed.size().y).max(0.0) * computed.inverse_scale_factor();
+                // Wheel down (scroll.y negative) scrolls content up (increases pos.y)
+                pos.y = (pos.y - delta_y).clamp(0.0, max_offset.max(2000.0));
+            }
+        })
+        .id();
+
+    // Visual scrollbar track
+    let track = commands
+        .spawn((
+            EditorInternal,
+            PluginScrollTrack,
+            Node {
+                width: px(8),
+                height: percent(100.0),
+                border_radius: radius_pill(),
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::FlexStart,
+                ..default()
+            },
+            BackgroundColor(BG_INPUT),
+            ChildOf(list_wrapper),
         ))
         .id();
 
-    // Populate catalog items
+    commands.spawn((
+        EditorInternal,
+        PluginScrollThumb,
+        Node {
+            width: percent(100.0),
+            height: px(50),
+            border_radius: radius_pill(),
+            margin: UiRect::top(px(0)),
+            ..default()
+        },
+        BackgroundColor(Color::srgba(0.0, 0.949, 0.996, 0.35)),
+        ChildOf(track),
+    ));
+
+    // Populate catalog items initially
     for plugin in PLUGIN_CATALOG {
-        spawn_plugin_item(&mut commands, list_scroll, plugin);
+        spawn_plugin_item(&mut commands, list_scroll, plugin, false);
     }
+}
+
+fn spawn_category_filter_tab(
+    commands: &mut Commands,
+    parent: Entity,
+    label: &'static str,
+    cat: Option<PluginCategory>,
+    is_active: bool,
+) {
+    let bg_color = if is_active { ACCENT_CYAN_DIM } else { BG_CARD };
+    let border_color = if is_active { BORDER_ACCENT } else { BORDER_SUBTLE };
+    let text_color = if is_active { ACCENT_CYAN } else { TEXT_SECONDARY };
+
+    let btn = commands
+        .spawn((
+            EditorInternal,
+            CategoryFilterTab { category: cat },
+            Node {
+                padding: UiRect::axes(px(10), px(4)),
+                border_radius: radius_button(),
+                border: UiRect::all(px(1)),
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(bg_color),
+            BorderColor::all(border_color),
+            ChildOf(parent),
+        ))
+        .observe(move |click: On<PointerClick>, mut writer: MessageWriter<FilterPluginCategoryMessage>| {
+            if click.button == PointerButton::Primary {
+                writer.write(FilterPluginCategoryMessage { category: cat });
+            }
+        })
+        .observe(move |trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>, state: Res<PluginManagerState>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                if state.selected_category != cat {
+                    *bg = BackgroundColor(BG_HOVER);
+                }
+            }
+        })
+        .observe(move |trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>, state: Res<PluginManagerState>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                if state.selected_category == cat {
+                    *bg = BackgroundColor(ACCENT_CYAN_DIM);
+                } else {
+                    *bg = BackgroundColor(BG_CARD);
+                }
+            }
+        })
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new(label),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(11.0),
+            weight: if is_active { FontWeight::BOLD } else { FontWeight::MEDIUM },
+            ..default()
+        },
+        TextColor(text_color),
+        ChildOf(btn),
+    ));
+}
 
     // Footer: Status Message + Web Build Indicator + Add Custom Crate
     let footer = commands
