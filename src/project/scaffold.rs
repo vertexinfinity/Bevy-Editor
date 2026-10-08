@@ -58,7 +58,7 @@ fn main() {{
         .add_plugins(DefaultPlugins.set(WindowPlugin {{
             primary_window: Some(Window {{
                 title: "{project_name}".to_string(),
-                resolution: (1280.0, 720.0).into(),
+                resolution: (1280.0_f32, 720.0_f32).into(),
                 ..default()
             }}),
             ..default()
@@ -86,7 +86,7 @@ fn setup_scene(
     commands.spawn((
         DirectionalLight {{
             illuminance: 10_000.0,
-            shadow_maps_enabled: true,
+            shadows_enabled: true,
             ..default()
         }},
         Transform::from_xyz(4.0, 8.0, 4.0).looking_at(Vec3::ZERO, Vec3::Y),

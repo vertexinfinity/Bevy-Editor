@@ -65,9 +65,25 @@ impl Exporter for WindowsExporter {
             .arg(&manifest_path)
             .output();
         if let Ok(check_out) = check_res {
+            let stderr_str = String::from_utf8_lossy(&check_out.stderr);
+            // Print cargo check output to terminal
+            for line in stderr_str.lines() {
+                info!("[cargo check] {line}");
+            }
             if !check_out.status.success() {
-                let err_msg = String::from_utf8_lossy(&check_out.stderr);
-                return Err(format!("Dependency resolution or cargo check failed: {err_msg}"));
+                // Extract error lines (or last 6 lines) for clean UI status display
+                let concise_err: String = stderr_str
+                    .lines()
+                    .filter(|l| l.contains("error[") || l.contains("error:") || l.starts_with("  -->"))
+                    .take(4)
+                    .collect::<Vec<_>>()
+                    .join(" | ");
+                let err_summary = if concise_err.is_empty() {
+                    stderr_str.lines().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n")
+                } else {
+                    concise_err
+                };
+                return Err(format!("Cargo check failed: {err_summary}"));
             }
         }
 

@@ -196,7 +196,9 @@ pub fn update_status_bar(
                     text.0 = format!("Success [{target}]: {message}");
                 }
                 ExportStatus::Failed { target, error } => {
-                    text.0 = format!("Error [{target}]: {error}");
+                    let first_line = error.lines().find(|l| !l.trim().is_empty()).unwrap_or("build error");
+                    let short_err: String = first_line.chars().take(90).collect();
+                    text.0 = format!("Error [{target}]: {short_err}");
                 }
             }
         }
