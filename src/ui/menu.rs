@@ -27,6 +27,7 @@ pub enum MenuAction {
     SaveScene,
     SaveAsScene,
     SetAsDefaultScene,
+    OpenPluginManager,
     ToggleBuildMenu,
     BuildAndroid,
     BuildWindows,
@@ -257,6 +258,8 @@ pub fn spawn_menu_bar(mut commands: Commands, current_ws: Res<ActiveWorkspace>) 
     spawn_dropdown_item(&mut commands, file_menu_popup, "💾 Save Scene As...", MenuAction::SaveAsScene);
     spawn_dropdown_separator(&mut commands, file_menu_popup);
     spawn_dropdown_item(&mut commands, file_menu_popup, "⭐ Set as Default Scene", MenuAction::SetAsDefaultScene);
+    spawn_dropdown_separator(&mut commands, file_menu_popup);
+    spawn_dropdown_item(&mut commands, file_menu_popup, "🧩 Plugins & Crates...", MenuAction::OpenPluginManager);
 
     // Quick Action: Save Scene Shortcut Button
     let quick_save_btn = commands
@@ -895,6 +898,9 @@ fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>) {{
                         path: default_scene_path,
                     };
                 }
+            }
+            MenuAction::OpenPluginManager => {
+                world.write_message(crate::ui::plugin_manager::TogglePluginManagerMessage);
             }
             MenuAction::ToggleBuildMenu => {
                 if let Some(mut state) = world.get_resource_mut::<BuildMenuState>() {

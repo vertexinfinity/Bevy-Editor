@@ -4,6 +4,7 @@ pub mod assets;
 pub mod camera;
 pub mod core;
 pub mod export;
+pub mod plugins;
 pub mod project;
 pub mod remote;
 pub mod scene;

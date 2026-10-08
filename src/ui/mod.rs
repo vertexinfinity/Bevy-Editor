@@ -7,6 +7,7 @@ pub mod inspector;
 pub mod panel;
 pub mod menu;
 pub mod play_bar;
+pub mod plugin_manager;
 pub mod status_bar;
 pub mod theme;
 pub mod tools_bar;
@@ -63,9 +64,14 @@ impl Plugin for EditorUiPlugin {
             .init_resource::<asset_browser::HoveredAssetDirectory>()
             .init_resource::<asset_browser::LastAssetClick>()
             .init_resource::<menu::McpBridgeState>()
+            .init_resource::<crate::plugins::PluginManagerState>()
             // Register messages
             .add_message::<menu::MenuActionMessage>()
             .add_message::<menu::SwitchWorkspaceMessage>()
+            .add_message::<plugin_manager::TogglePluginManagerMessage>()
+            .add_message::<plugin_manager::ToggleCrateMessage>()
+            .add_message::<plugin_manager::FilterPluginCategoryMessage>()
+            .add_message::<plugin_manager::AddCustomCrateMessage>()
             .add_message::<hierarchy::ToggleHierarchyDockMessage>()
             .add_message::<hierarchy::SpawnPrimitiveMessage>()
             .add_message::<asset_browser::SpawnAssetMessage>()
@@ -103,6 +109,7 @@ impl Plugin for EditorUiPlugin {
                     status_bar::spawn_status_bar,
                     asset_browser::spawn_asset_browser,
                     inspector::spawn_inspector_panel,
+                    plugin_manager::spawn_plugin_manager_modal,
                 ),
             )
 
@@ -121,6 +128,8 @@ impl Plugin for EditorUiPlugin {
                     hierarchy::handle_hierarchy_collapse,
                     hierarchy::handle_hierarchy_search_input,
                     status_bar::update_status_bar,
+                    plugin_manager::handle_toggle_plugin_manager,
+                    plugin_manager::handle_toggle_crate_action,
                 )
                     .run_if(in_state(EditorAppState::InEditor)),
             )
