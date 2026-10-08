@@ -46,6 +46,20 @@ impl Exporter for WindowsExporter {
             }
         }
 
+        // Auto-migrate legacy Bevy 0.15 API incompatibilities in starter projects if present
+        let main_src = project_dir.join("src").join("main.rs");
+        if main_src.is_file() {
+            if let Ok(src_content) = fs::read_to_string(&main_src) {
+                if src_content.contains("shadow_maps_enabled") || src_content.contains("(1280.0, 720.0)") {
+                    info!("Auto-patching legacy template syntax in {} for Bevy 0.15 compatibility...", main_src.display());
+                    let patched = src_content
+                        .replace("shadow_maps_enabled", "shadows_enabled")
+                        .replace("(1280.0, 720.0)", "(1280.0_f32, 720.0_f32)");
+                    let _ = fs::write(&main_src, patched);
+                }
+            }
+        }
+
         let assets_dir = export_dir.join("assets");
         fs::create_dir_all(&assets_dir).map_err(|e| format!("Failed to create assets directory: {e}"))?;
 
