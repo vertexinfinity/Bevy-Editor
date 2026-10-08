@@ -36,6 +36,16 @@ impl Exporter for WindowsExporter {
             return Err(format!("No Cargo.toml found in {}", project_dir.display()));
         }
 
+        // Ensure the game project has an isolated [workspace] table if not already declared,
+        // preventing Cargo workspace hierarchy conflicts when the user project resides inside another directory with a Cargo.toml.
+        if let Ok(content) = fs::read_to_string(&manifest_path) {
+            if !content.contains("[workspace]") {
+                info!("Isolating target game project from outer cargo workspaces by appending [workspace] table...");
+                let updated = format!("{}\n\n# Ensure root workspace isolation for standalone builds\n[workspace]\n", content.trim_end());
+                let _ = fs::write(&manifest_path, updated);
+            }
+        }
+
         let assets_dir = export_dir.join("assets");
         fs::create_dir_all(&assets_dir).map_err(|e| format!("Failed to create assets directory: {e}"))?;
 

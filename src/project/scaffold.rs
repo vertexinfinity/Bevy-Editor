@@ -23,11 +23,15 @@ impl ProjectScaffolder {
             .map_err(|e| format!("Failed to create project scripts dir: {e}"))?;
 
         // 1. Cargo.toml
+        // Note: [workspace] with empty members ensures Cargo treats this project as its own root workspace,
+        // preventing "current package believes it's in a workspace when it's not" errors if placed inside any parent folder with a Cargo.toml.
         let cargo_toml = format!(
             r#"[package]
 name = "{clean_name}"
 version = "0.1.0"
 edition = "2024"
+
+[workspace]
 
 [dependencies]
 bevy = "0.15"
