@@ -5,3 +5,7 @@ wiki/
 temp_mcp_game/
 *.tmp
 *.temp
+.amazonq/
+test_mcp_client.mjs
+screenshots/
+
