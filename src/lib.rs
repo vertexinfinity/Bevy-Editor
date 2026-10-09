@@ -28,7 +28,13 @@ pub fn run_editor() {
                 .set(RenderPlugin {
                     render_creation: RenderCreation::Automatic(Box::new(WgpuSettings {
                         // Prioritize DX12 on Windows to prevent Vulkan laptop swapchain DeviceLost panics
-                        backends: Some(Backends::DX12 | Backends::VULKAN),
+                        backends: Some(
+                            Backends::from_env().unwrap_or(if cfg!(target_os = "windows") {
+                                Backends::DX12
+                            } else {
+                                Backends::PRIMARY
+                            }),
+                        ),
                         power_preference: PowerPreference::HighPerformance,
                         ..default()
                     })),
