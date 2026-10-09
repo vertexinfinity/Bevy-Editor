@@ -60,6 +60,7 @@ impl Plugin for EditorUiPlugin {
             .init_resource::<menu::ActiveWorkspace>()
             .init_resource::<hierarchy::HierarchyState>()
             .init_resource::<inspector::InspectorState>()
+            .init_resource::<inspector::TransformTextEditState>()
             .init_resource::<asset_browser::AssetBrowserState>()
             .init_resource::<asset_browser::HoveredAssetDirectory>()
             .init_resource::<asset_browser::LastAssetClick>()
@@ -80,12 +81,17 @@ impl Plugin for EditorUiPlugin {
             .add_message::<asset_browser::NavigateAssetFolderMessage>()
             .add_message::<asset_browser::SetAssetFilterMessage>()
             .add_message::<asset_browser::CreateAssetAction>()
+            .add_message::<asset_browser::SetDefaultSceneMessage>()
             .add_message::<inspector::ToggleDebugModeMessage>()
             .add_message::<inspector::ToggleDockMessage>()
             .add_message::<inspector::ToggleCoordModeMessage>()
             .add_message::<inspector::TransformNudgeAction>()
             .add_message::<inspector::AddComponentKind>()
             .add_message::<inspector::ScriptPropAction>()
+            .add_message::<inspector::TransformSetAxisAction>()
+            .add_message::<inspector::MaterialNudgeAction>()
+            .add_message::<inspector::ToggleScriptEnabledAction>()
+            .add_message::<inspector::SelectScriptEntityAction>()
             .add_message::<panel::TogglePanelMessage>()
             .add_message::<panel::TogglePanelCollapseMessage>()
             .add_message::<panel::SetPanelDockMessage>()
@@ -141,10 +147,15 @@ impl Plugin for EditorUiPlugin {
                     asset_browser::handle_spawn_asset_messages,
                     asset_browser::handle_explorer_dock_and_refresh,
                     asset_browser::handle_create_asset_actions,
+                    asset_browser::handle_set_default_scene,
                     inspector::handle_inspector_toggle_messages,
                     inspector::handle_transform_nudges,
                     inspector::handle_add_component_actions,
                     inspector::handle_script_prop_actions,
+                    inspector::handle_material_nudges,
+                    inspector::handle_transform_text_input,
+                    inspector::update_active_scripts_panel,
+                    inspector::handle_toggle_script_enabled,
                     inspector::update_clean_transform_labels,
                     panel::systems::handle_panel_collapse_messages,
                     panel::systems::handle_panel_visibility_messages,

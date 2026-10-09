@@ -1,8 +1,19 @@
-﻿//! Transform Card (Position, Rotation, Scale), interactive axis widgets, and transform update systems.
-use bevy::{ecs::message::{MessageReader, MessageWriter}, math::EulerRot, picking::{events::{PointerClick, PointerOut, PointerOver}, pointer::PointerButton}, prelude::*, inspector::InspectorSelection};
+//! Transform Card (Position, Rotation, Scale), interactive axis widgets, direct keyboard text typing, and transform update systems.
+
+use bevy::{
+    ecs::message::{MessageReader, MessageWriter},
+    inspector::InspectorSelection,
+    math::EulerRot,
+    picking::{
+        events::{PointerClick, PointerOut, PointerOver},
+        pointer::PointerButton,
+    },
+    prelude::*,
+};
 use crate::scene::{components::*, EditorInternal};
 use crate::ui::theme::*;
 use super::types::*;
+
 pub(crate) fn spawn_transform_value_row(
     commands: &mut Commands,
     parent: Entity,
@@ -118,6 +129,22 @@ fn spawn_transform_axis_widget(
             BorderColor::all(BORDER_SUBTLE),
             ChildOf(widget),
         ))
+        .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_HOVER);
+            }
+        })
+        .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_INPUT);
+            }
+        })
+        .observe(move |click: On<PointerClick>, mut text_edit: ResMut<TransformTextEditState>| {
+            if click.button == PointerButton::Primary {
+                text_edit.active = Some((property, axis));
+                text_edit.buffer.clear();
+            }
+        })
         .id();
 
     commands.spawn((
@@ -263,13 +290,97 @@ pub fn handle_transform_nudges(
     }
 }
 
+/// Handles typing numeric values directly into transform fields.
+pub fn handle_transform_text_input(
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut char_events: MessageReader<bevy::input::keyboard::KeyboardInput>,
+    mut text_edit: ResMut<TransformTextEditState>,
+    selection: Res<InspectorSelection>,
+    mut transforms: Query<&mut Transform>,
+) {
+    if text_edit.active.is_none() {
+        return;
+    }
+
+    // Cancel on escape
+    if keyboard_input.just_pressed(KeyCode::Escape) {
+        text_edit.active = None;
+        text_edit.buffer.clear();
+        return;
+    }
+
+    // Process character typing
+    for ev in char_events.read() {
+        if ev.state.is_pressed() {
+            if let bevy::input::keyboard::Key::Character(ref ch) = ev.logical_key {
+                for c in ch.chars() {
+                    if c.is_ascii_digit() || c == '.' || c == '-' {
+                        text_edit.buffer.push(c);
+                    }
+                }
+            }
+        }
+    }
+
+    if keyboard_input.just_pressed(KeyCode::Backspace) {
+        text_edit.buffer.pop();
+    }
+
+    // Commit on Enter
+    if keyboard_input.just_pressed(KeyCode::Enter) {
+        if let Some((prop, axis)) = text_edit.active {
+            if let Ok(parsed_val) = text_edit.buffer.trim().parse::<f32>() {
+                if let Some(selected) = selection.0 {
+                    if let Ok(mut transform) = transforms.get_mut(selected) {
+                        match prop {
+                            TransformProperty::Position => match axis {
+                                TransformAxis::X => transform.translation.x = parsed_val,
+                                TransformAxis::Y => transform.translation.y = parsed_val,
+                                TransformAxis::Z => transform.translation.z = parsed_val,
+                            },
+                            TransformProperty::Rotation => match axis {
+                                TransformAxis::X => {
+                                    let (_, y, z) = transform.rotation.to_euler(EulerRot::XYZ);
+                                    transform.rotation = Quat::from_euler(EulerRot::XYZ, parsed_val.to_radians(), y, z);
+                                }
+                                TransformAxis::Y => {
+                                    let (x, _, z) = transform.rotation.to_euler(EulerRot::XYZ);
+                                    transform.rotation = Quat::from_euler(EulerRot::XYZ, x, parsed_val.to_radians(), z);
+                                }
+                                TransformAxis::Z => {
+                                    let (x, y, _) = transform.rotation.to_euler(EulerRot::XYZ);
+                                    transform.rotation = Quat::from_euler(EulerRot::XYZ, x, y, parsed_val.to_radians());
+                                }
+                            },
+                            TransformProperty::Scale => match axis {
+                                TransformAxis::X => transform.scale.x = parsed_val,
+                                TransformAxis::Y => transform.scale.y = parsed_val,
+                                TransformAxis::Z => transform.scale.z = parsed_val,
+                            },
+                        }
+                        info!("Manually set {:?} {:?} to {}", prop, axis, parsed_val);
+                    }
+                }
+            }
+        }
+        text_edit.active = None;
+        text_edit.buffer.clear();
+    }
+}
+
 fn set_transform_axis_values(
     axis_labels: &mut Query<(&TransformAxisValue, &mut Text), With<TransformAxisValue>>,
     position: Vec3,
     rotation: Vec3,
     scale: Vec3,
+    text_edit: &TransformTextEditState,
 ) {
     for (axis_value, mut text) in axis_labels.iter_mut() {
+        if text_edit.active == Some((axis_value.property, axis_value.axis)) {
+            text.0 = format!("{}_", text_edit.buffer);
+            continue;
+        }
+
         let vector = match axis_value.property {
             TransformProperty::Position => position,
             TransformProperty::Rotation => rotation,
@@ -291,6 +402,7 @@ fn set_transform_axis_values(
 pub fn update_clean_transform_labels(
     selection: Res<InspectorSelection>,
     state: Res<InspectorState>,
+    text_edit: Res<TransformTextEditState>,
     entities: Query<(
         Option<&Name>,
         Option<&Transform>,
@@ -303,12 +415,17 @@ pub fn update_clean_transform_labels(
         Option<&DirectionalLight>,
         Option<&PointLight>,
         Option<&Visibility>,
+        Option<&MeshMaterial3d<StandardMaterial>>,
     )>,
-    mut name_label: Query<&mut Text, (With<SelectedEntityLabel>, Without<TransformAxisValue>, Without<ComponentsBadgesLabel>, Without<ScriptPropsLabel>)>,
+    materials: Res<Assets<StandardMaterial>>,
+    mut name_label: Query<&mut Text, (With<SelectedEntityLabel>, Without<TransformAxisValue>, Without<ComponentsBadgesLabel>, Without<ScriptPropsLabel>, Without<MaterialInfoLabel>)>,
     mut axis_labels: Query<(&TransformAxisValue, &mut Text), With<TransformAxisValue>>,
-    mut badges_label: Query<&mut Text, (With<ComponentsBadgesLabel>, Without<SelectedEntityLabel>, Without<TransformAxisValue>, Without<ScriptPropsLabel>)>,
-    mut script_label: Query<&mut Text, (With<ScriptPropsLabel>, Without<SelectedEntityLabel>, Without<TransformAxisValue>, Without<ComponentsBadgesLabel>)>,
-    mut script_card_query: Query<&mut Node, (With<ScriptCardRoot>, Without<CleanViewRoot>, Without<DebugViewRoot>)>,
+    mut badges_label: Query<&mut Text, (With<ComponentsBadgesLabel>, Without<SelectedEntityLabel>, Without<TransformAxisValue>, Without<ScriptPropsLabel>, Without<MaterialInfoLabel>)>,
+    mut script_label: Query<&mut Text, (With<ScriptPropsLabel>, Without<SelectedEntityLabel>, Without<TransformAxisValue>, Without<ComponentsBadgesLabel>, Without<MaterialInfoLabel>)>,
+    mut script_card_query: Query<&mut Node, (With<ScriptCardRoot>, Without<CleanViewRoot>, Without<DebugViewRoot>, Without<MaterialCardRoot>)>,
+    mut mat_card_query: Query<&mut Node, (With<MaterialCardRoot>, Without<CleanViewRoot>, Without<DebugViewRoot>, Without<ScriptCardRoot>)>,
+    mut mat_info_label: Query<&mut Text, (With<MaterialInfoLabel>, Without<SelectedEntityLabel>, Without<TransformAxisValue>, Without<ComponentsBadgesLabel>, Without<ScriptPropsLabel>)>,
+    mut mat_swatch: Query<&mut BackgroundColor, With<MaterialColorSwatch>>,
 ) {
     let Ok(mut name_txt) = name_label.single_mut() else { return };
     let Ok(mut badges_txt) = badges_label.single_mut() else { return };
@@ -316,16 +433,22 @@ pub fn update_clean_transform_labels(
 
     let Some(selected) = selection.0 else {
         name_txt.0 = "Selected: None (Click object in scene)".to_string();
-        set_transform_axis_values(&mut axis_labels, Vec3::ZERO, Vec3::ZERO, Vec3::ONE);
+        set_transform_axis_values(&mut axis_labels, Vec3::ZERO, Vec3::ZERO, Vec3::ONE, &text_edit);
         badges_txt.0 = "None".to_string();
         script_txt.0 = "No entity selected".to_string();
+        if let Ok(mut mat_card) = mat_card_query.single_mut() {
+            mat_card.display = Display::None;
+        }
         return;
     };
 
-    let Ok((name, transform, global_transform, script, spin, vel, tag, mesh, dir_light, pt_light, vis)) = entities.get(selected) else {
+    let Ok((name, transform, global_transform, script, spin, vel, tag, mesh, dir_light, pt_light, vis, mat_handle)) = entities.get(selected) else {
         name_txt.0 = format!("Selected: {:?} (Despawned)", selected);
-        set_transform_axis_values(&mut axis_labels, Vec3::ZERO, Vec3::ZERO, Vec3::ONE);
+        set_transform_axis_values(&mut axis_labels, Vec3::ZERO, Vec3::ZERO, Vec3::ONE, &text_edit);
         script_txt.0 = "Despawned".to_string();
+        if let Ok(mut mat_card) = mat_card_query.single_mut() {
+            mat_card.display = Display::None;
+        }
         return;
     };
 
@@ -366,12 +489,13 @@ pub fn update_clean_transform_labels(
         (Vec3::ZERO, Vec3::ZERO, Vec3::ONE)
     };
 
-    set_transform_axis_values(&mut axis_labels, pos, rot, scale);
+    set_transform_axis_values(&mut axis_labels, pos, rot, scale, &text_edit);
 
     // Collect badges
     let mut badges = Vec::new();
     if transform.is_some() { badges.push("[Transform]"); }
     if mesh.is_some() { badges.push("[Mesh3d]"); }
+    if mat_handle.is_some() { badges.push("[PBR Material]"); }
     if dir_light.is_some() { badges.push("[DirectionalLight]"); }
     if pt_light.is_some() { badges.push("[PointLight]"); }
     if script.is_some() { badges.push("[Script]"); }
@@ -404,5 +528,26 @@ pub fn update_clean_transform_labels(
         script_txt.0 = lines.join("\n");
     } else {
         script_txt.0 = String::new();
+    }
+
+    // Material Card update
+    if let Ok(mut mat_card) = mat_card_query.single_mut() {
+        if let Some(handle) = mat_handle {
+            mat_card.display = Display::Flex;
+            if let Some(mat) = materials.get(&handle.0) {
+                if let Ok(mut swatch_bg) = mat_swatch.single_mut() {
+                    *swatch_bg = BackgroundColor(mat.base_color);
+                }
+                if let Ok(mut info_text) = mat_info_label.single_mut() {
+                    let glow_str = if mat.emissive.to_f32_array()[0] > 0.1 { "On" } else { "Off" };
+                    info_text.0 = format!(
+                        "Roughness: {:.2} | Metallic: {:.2} | Glow: {} | Unlit: {}",
+                        mat.perceptual_roughness, mat.metallic, glow_str, mat.unlit
+                    );
+                }
+            }
+        } else {
+            mat_card.display = Display::None;
+        }
     }
 }

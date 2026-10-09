@@ -156,3 +156,47 @@ pub enum ScriptPropAction {
     NudgeFloat { key: String, delta: f32 },
     ToggleBool { key: String },
 }
+
+#[derive(Component)]
+pub struct MaterialCardRoot;
+
+#[derive(Component)]
+pub struct MaterialInfoLabel;
+
+#[derive(Component)]
+pub struct MaterialColorSwatch;
+
+#[derive(Message, Clone, Debug)]
+pub enum MaterialNudgeAction {
+    SetBaseColor(Color),
+    AdjustRoughness(f32),
+    SetRoughness(f32),
+    AdjustMetallic(f32),
+    SetMetallic(f32),
+    AdjustReflectance(f32),
+    ToggleEmissive,
+    ToggleUnlit,
+}
+
+#[derive(Resource, Default, Debug, Clone)]
+pub struct TransformTextEditState {
+    pub active: Option<(TransformProperty, TransformAxis)>,
+    pub buffer: String,
+}
+
+#[derive(Message, Clone, Copy, Debug)]
+pub struct TransformSetAxisAction {
+    pub property: TransformProperty,
+    pub axis: TransformAxis,
+    pub value: f32,
+}
+
+#[derive(Component)]
+pub struct ActiveScriptsCardRoot;
+
+#[derive(Component)]
+pub struct ActiveScriptsContent;
+
+#[derive(Message, Clone, Copy, Debug)]
+pub struct SelectScriptEntityAction(pub Entity);
+

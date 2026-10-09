@@ -94,14 +94,15 @@ pub fn spawn_plugin_manager_modal(mut commands: Commands) {
             EditorInternal,
             Node {
                 width: px(820),
-                max_width: percent(94.0),
-                height: px(590),
-                max_height: percent(92.0),
-                padding: UiRect::all(px(16)),
+                max_width: percent(92.0),
+                height: px(540),
+                max_height: percent(85.0),
+                padding: UiRect::all(px(14)),
                 flex_direction: FlexDirection::Column,
                 border: UiRect::all(px(1)),
                 border_radius: radius_panel(),
-                row_gap: px(12),
+                row_gap: px(10),
+                overflow: Overflow::clip(),
                 ..default()
             },
             BackgroundColor(BG_PANEL),
@@ -245,6 +246,8 @@ pub fn spawn_plugin_manager_modal(mut commands: Commands) {
             Node {
                 width: percent(100.0),
                 flex_grow: 1.0,
+                flex_shrink: 1.0,
+                min_height: px(150),
                 flex_direction: FlexDirection::Row,
                 column_gap: px(6),
                 overflow: Overflow::clip(),
@@ -262,7 +265,9 @@ pub fn spawn_plugin_manager_modal(mut commands: Commands) {
             ScrollPosition::default(),
             Node {
                 flex_grow: 1.0,
+                flex_shrink: 1.0,
                 height: percent(100.0),
+                min_height: px(150),
                 flex_direction: FlexDirection::Column,
                 row_gap: px(6),
                 overflow: Overflow::scroll_y(),
@@ -274,12 +279,11 @@ pub fn spawn_plugin_manager_modal(mut commands: Commands) {
         .observe(|scroll: On<bevy::picking::events::PointerScroll>, mut q_scroll: Query<(&mut ScrollPosition, &ComputedNode)>| {
             if let Ok((mut pos, computed)) = q_scroll.get_mut(scroll.entity) {
                 let delta_y = match scroll.unit {
-                    bevy::input::mouse::MouseScrollUnit::Line => scroll.y * 32.0,
+                    bevy::input::mouse::MouseScrollUnit::Line => scroll.y * 36.0,
                     bevy::input::mouse::MouseScrollUnit::Pixel => scroll.y,
                 };
                 let max_offset = (computed.content_size().y - computed.size().y).max(0.0) * computed.inverse_scale_factor();
-                // Wheel down (scroll.y negative) scrolls content up (increases pos.y)
-                pos.y = (pos.y - delta_y).clamp(0.0, max_offset.max(2000.0));
+                pos.y = (pos.y - delta_y).clamp(0.0, max_offset.max(5000.0));
             }
         })
         .id();

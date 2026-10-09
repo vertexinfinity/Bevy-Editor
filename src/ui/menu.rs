@@ -229,6 +229,7 @@ pub fn spawn_menu_bar(mut commands: Commands, current_ws: Res<ActiveWorkspace>) 
         .spawn((
             EditorInternal,
             FileMenuPanel,
+            GlobalZIndex(150),
             Node {
                 position_type: PositionType::Absolute,
                 top: px(32),
@@ -408,6 +409,7 @@ pub fn spawn_menu_bar(mut commands: Commands, current_ws: Res<ActiveWorkspace>) 
         .spawn((
             EditorInternal,
             BuildMenuPanel,
+            GlobalZIndex(150),
             Node {
                 position_type: PositionType::Absolute,
                 top: px(32),
@@ -582,8 +584,9 @@ fn spawn_build_target_button(
                 *bg = BackgroundColor(BG_INPUT);
             }
         })
-        .observe(|click: On<PointerClick>, query: Query<&MenuAction>, mut writer: MessageWriter<MenuActionMessage>| {
+        .observe(|click: On<PointerClick>, query: Query<&MenuAction>, mut writer: MessageWriter<MenuActionMessage>, mut build_state: ResMut<BuildMenuState>| {
             if click.button == PointerButton::Primary {
+                build_state.0 = false;
                 if let Ok(action) = query.get(click.entity) {
                     writer.write(MenuActionMessage(*action));
                 }

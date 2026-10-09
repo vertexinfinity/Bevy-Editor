@@ -66,6 +66,10 @@ pub struct NavigateAssetFolderMessage(pub PathBuf);
 #[derive(Message, Clone, Copy, Debug)]
 pub struct RefreshAssetBrowserMessage;
 
+/// Message to set a scene file as project default scene.
+#[derive(Message, Clone, Debug)]
+pub struct SetDefaultSceneMessage(pub PathBuf);
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum AssetCategoryFilter {
     #[default]
@@ -629,6 +633,8 @@ fn populate_asset_list(
                     border_radius: radius_button(),
                     border: UiRect::all(px(1)),
                     align_items: AlignItems::Center,
+                    justify_content: JustifyContent::SpaceBetween,
+                    flex_direction: FlexDirection::Row,
                     ..default()
                 },
                 BackgroundColor(BG_CARD),
@@ -685,6 +691,85 @@ fn populate_asset_list(
             TextColor(TEXT_PRIMARY),
             ChildOf(row),
         ));
+
+        let is_scene = !is_dir && (name.ends_with(".ron") || name.ends_with(".bsn"));
+        let is_default = is_scene && (name == "default_scene.bsn" || path.ends_with("default_scene.bsn"));
+
+        if is_scene {
+            if is_default {
+                commands.spawn((
+                    EditorInternal,
+                    Pickable::IGNORE,
+                    Text::new("⭐ Default"),
+                    TextFont {
+                        font_size: bevy::text::FontSize::Px(9.5),
+                        weight: FontWeight::BOLD,
+                        ..default()
+                    },
+                    TextColor(Color::srgb(0.95, 0.8, 0.2)),
+                    Node {
+                        padding: UiRect::axes(px(5), px(1)),
+                        border_radius: BorderRadius::all(px(3)),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgba(0.95, 0.8, 0.2, 0.15)),
+                    ChildOf(row),
+                ));
+            } else {
+                let set_def_btn = commands
+                    .spawn((
+                        EditorInternal,
+                        Node {
+                            padding: UiRect::axes(px(6), px(2)),
+                            border_radius: BorderRadius::all(px(3)),
+                            border: UiRect::all(px(1)),
+                            ..default()
+                        },
+                        BackgroundColor(BG_INPUT),
+                        BorderColor::all(BORDER_SUBTLE),
+                        ChildOf(row),
+                    ))
+                    .observe(move |mut click: On<PointerClick>, mut writer: MessageWriter<SetDefaultSceneMessage>| {
+                        if click.button == PointerButton::Primary {
+                            click.propagate(false);
+                            writer.write(SetDefaultSceneMessage(row_path.clone()));
+                        }
+                    })
+                    .id();
+
+                commands.spawn((
+                    EditorInternal,
+                    Pickable::IGNORE,
+                    Text::new("Set Default"),
+                    TextFont {
+                        font_size: bevy::text::FontSize::Px(9.0),
+                        ..default()
+                    },
+                    TextColor(TEXT_SECONDARY),
+                    ChildOf(set_def_btn),
+                ));
+            }
+        }
+    }
+}
+
+/// Handles setting an existing scene as the default scene.
+pub fn handle_set_default_scene(
+    mut reader: MessageReader<SetDefaultSceneMessage>,
+    mut refresh_writer: MessageWriter<RefreshAssetBrowserMessage>,
+    mut current_scene: Option<ResMut<crate::scene::CurrentScene>>,
+) {
+    for msg in reader.read() {
+        let default_target = Path::new("assets/scenes/default_scene.bsn");
+        if let Err(e) = std::fs::copy(&msg.0, default_target) {
+            warn!("Failed to set default scene: {e}");
+        } else {
+            info!("⭐ Successfully set {:?} as default scene!", msg.0);
+            if let Some(ref mut cs) = current_scene {
+                cs.file_path = Some(default_target.to_path_buf());
+            }
+            refresh_writer.write(RefreshAssetBrowserMessage);
+        }
     }
 }
 

@@ -80,6 +80,70 @@ pub struct GameplayTag {
     pub tag: String,
 }
 
+/// Interactive action assigned to a UI button, triggered on click during Play mode.
+#[derive(Component, Reflect, Clone, Debug, PartialEq)]
+#[reflect(Component, Default)]
+pub enum UiButtonClickAction {
+    LogMessage(String),
+    ToggleLight,
+    SpawnCube,
+    PrintStats,
+    CustomAction(String),
+}
+
+impl Default for UiButtonClickAction {
+    fn default() -> Self {
+        Self::LogMessage("Button Clicked!".to_string())
+    }
+}
+
+impl UiButtonClickAction {
+    pub fn execute(
+        &self,
+        commands: &mut Commands,
+        meshes: &mut Assets<Mesh>,
+        materials: &mut Assets<StandardMaterial>,
+        lights: &mut Query<&mut Visibility, With<PointLight>>,
+    ) {
+        match self {
+            Self::LogMessage(msg) => {
+                info!("[UI Action] {}", msg);
+            }
+            Self::ToggleLight => {
+                for mut vis in lights.iter_mut() {
+                    *vis = match *vis {
+                        Visibility::Visible | Visibility::Inherited => Visibility::Hidden,
+                        Visibility::Hidden => Visibility::Visible,
+                    };
+                }
+                info!("[UI Action] Toggled scene lights!");
+            }
+            Self::SpawnCube => {
+                let mesh = meshes.add(Cuboid::new(0.5, 0.5, 0.5));
+                let mat = materials.add(StandardMaterial {
+                    base_color: Color::srgb(0.9, 0.8, 0.2),
+                    ..default()
+                });
+                commands.spawn((
+                    crate::scene::SceneEntity,
+                    Name::new("Spawned Dynamic Cube"),
+                    Mesh3d(mesh),
+                    MeshMaterial3d(mat),
+                    Transform::from_xyz(0.0, 3.0, 0.0),
+                    Velocity { linear: Vec3::new(0.0, -1.0, 0.0) },
+                ));
+                info!("[UI Action] Spawned dynamic cube!");
+            }
+            Self::PrintStats => {
+                info!("[UI Action] Simulation running at regular tick.");
+            }
+            Self::CustomAction(name) => {
+                info!("[UI Action] Triggered custom callback: {}", name);
+            }
+        }
+    }
+}
+
 pub struct AuthorableComponentsPlugin;
 
 impl Plugin for AuthorableComponentsPlugin {
@@ -89,11 +153,13 @@ impl Plugin for AuthorableComponentsPlugin {
             .register_type::<Velocity>()
             .register_type::<SpinAnimation>()
             .register_type::<GameplayTag>()
+            .register_type::<UiButtonClickAction>()
             .add_systems(
                 Update,
                 (
                     animate_spinning_objects,
                     simulate_velocities,
+                    handle_ui_button_interactions,
                 ),
             );
     }
@@ -105,9 +171,11 @@ fn animate_spinning_objects(
     mut query: Query<(&SpinAnimation, &mut Transform)>,
 ) {
     if let Some(state) = play_state {
-        if *state == PlayState::Paused {
+        if *state != PlayState::Playing {
             return;
         }
+    } else {
+        return;
     }
 
     for (spin, mut transform) in &mut query {
@@ -128,9 +196,33 @@ fn simulate_velocities(
         if *state != PlayState::Playing {
             return;
         }
+    } else {
+        return;
     }
 
     for (vel, mut transform) in &mut query {
         transform.translation += vel.linear * time.delta_secs();
+    }
+}
+
+/// Handles interactive UI button clicks during Play mode.
+fn handle_ui_button_interactions(
+    play_state: Option<Res<PlayState>>,
+    interaction_query: Query<&UiButtonClickAction, Added<bevy::ui::Pressed>>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut lights: Query<&mut Visibility, With<PointLight>>,
+) {
+    if let Some(state) = play_state {
+        if *state != PlayState::Playing {
+            return;
+        }
+    } else {
+        return;
+    }
+
+    for action in &interaction_query {
+        action.execute(&mut commands, &mut meshes, &mut materials, &mut lights);
     }
 }

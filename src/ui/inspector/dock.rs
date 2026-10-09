@@ -7,6 +7,8 @@ use super::types::*;
 use super::components_card::*;
 use super::script_card::*;
 use super::transform_card::*;
+use super::material_card::*;
+use super::active_scripts_card::*;
 pub fn spawn_inspector_panel(mut commands: Commands) {
     let dock_root = commands
         .spawn((
@@ -622,7 +624,13 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
         ChildOf(script_body),
     ));
 
-    // E. Add Component Section
+    // E. PBR Material Card
+    spawn_material_card(commands, parent);
+
+    // F. Active Scripts Monitor Card
+    spawn_active_scripts_card(commands, parent);
+
+    // G. Add Component Section
     let add_comp_card = commands
         .spawn((
             EditorInternal,

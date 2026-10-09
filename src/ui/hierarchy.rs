@@ -72,11 +72,25 @@ pub struct HierarchyEntityRow(pub Entity);
 #[derive(Message, Clone, Copy, Debug)]
 pub struct ToggleHierarchyDockMessage;
 
-#[derive(Message, Clone, Copy, Debug)]
+#[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SpawnPrimitiveKind {
+    // 3D Primitives
     Cube,
     Sphere,
+    Cylinder,
+    Plane,
+    Capsule,
+    Torus,
+    // Light Sources
     Light,
+    PointLight,
+    DirectionalLight,
+    SpotLight,
+    // UI Elements
+    UiButton,
+    UiText,
+    UiPanel,
+    // Hierarchy Management
     Empty,
     Delete,
     Duplicate,
@@ -313,6 +327,7 @@ pub fn spawn_hierarchy_panel(mut commands: Commands) {
         .spawn((
             EditorInternal,
             HierarchyAddMenu,
+            GlobalZIndex(150),
             Node {
                 display: Display::None,
                 flex_direction: FlexDirection::Column,
@@ -320,6 +335,8 @@ pub fn spawn_hierarchy_panel(mut commands: Commands) {
                 padding: UiRect::all(px(4)),
                 border: UiRect::all(px(1)),
                 border_radius: radius_card(),
+                max_height: px(380),
+                overflow: Overflow::clip_y(),
                 ..default()
             },
             BackgroundColor(BG_PANEL),
@@ -333,9 +350,29 @@ pub fn spawn_hierarchy_panel(mut commands: Commands) {
     spawn_primitive_btn(&mut commands, action_buttons, "Del", SpawnPrimitiveKind::Delete);
     spawn_primitive_btn(&mut commands, action_buttons, "Unparent", SpawnPrimitiveKind::Unparent);
 
+    // 3D Objects
+    spawn_hierarchy_menu_section(&mut commands, add_menu, "3D PRIMITIVES");
     spawn_hierarchy_menu_item(&mut commands, add_menu, "Cube", SpawnPrimitiveKind::Cube);
     spawn_hierarchy_menu_item(&mut commands, add_menu, "Sphere", SpawnPrimitiveKind::Sphere);
-    spawn_hierarchy_menu_item(&mut commands, add_menu, "Point Light", SpawnPrimitiveKind::Light);
+    spawn_hierarchy_menu_item(&mut commands, add_menu, "Cylinder", SpawnPrimitiveKind::Cylinder);
+    spawn_hierarchy_menu_item(&mut commands, add_menu, "Plane Ground", SpawnPrimitiveKind::Plane);
+    spawn_hierarchy_menu_item(&mut commands, add_menu, "Capsule", SpawnPrimitiveKind::Capsule);
+    spawn_hierarchy_menu_item(&mut commands, add_menu, "Torus", SpawnPrimitiveKind::Torus);
+
+    // Light Sources
+    spawn_hierarchy_menu_section(&mut commands, add_menu, "LIGHT SOURCES");
+    spawn_hierarchy_menu_item(&mut commands, add_menu, "Sun (Directional)", SpawnPrimitiveKind::DirectionalLight);
+    spawn_hierarchy_menu_item(&mut commands, add_menu, "Point Light", SpawnPrimitiveKind::PointLight);
+    spawn_hierarchy_menu_item(&mut commands, add_menu, "Spot Light", SpawnPrimitiveKind::SpotLight);
+
+    // UI Elements
+    spawn_hierarchy_menu_section(&mut commands, add_menu, "UI ELEMENTS");
+    spawn_hierarchy_menu_item(&mut commands, add_menu, "UI Button", SpawnPrimitiveKind::UiButton);
+    spawn_hierarchy_menu_item(&mut commands, add_menu, "UI Text Label", SpawnPrimitiveKind::UiText);
+    spawn_hierarchy_menu_item(&mut commands, add_menu, "UI Panel Container", SpawnPrimitiveKind::UiPanel);
+
+    // General
+    spawn_hierarchy_menu_section(&mut commands, add_menu, "GENERAL");
     spawn_hierarchy_menu_item(&mut commands, add_menu, "Empty Entity", SpawnPrimitiveKind::Empty);
 
     // 4. Entity List Container
@@ -505,6 +542,26 @@ fn spawn_hierarchy_menu_item(
         ChildOf(button),
     ));
 }
+
+fn spawn_hierarchy_menu_section(commands: &mut Commands, parent: Entity, label: &str) {
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new(label),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(9.0),
+            weight: FontWeight::BOLD,
+            ..default()
+        },
+        TextColor(TEXT_MUTED),
+        Node {
+            margin: UiRect::axes(px(6), px(3)),
+            ..default()
+        },
+        ChildOf(parent),
+    ));
+}
+
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum HierarchyCategory {
@@ -943,7 +1000,99 @@ pub fn handle_spawn_primitives(
                 world.resource_mut::<InspectorSelection>().0 = Some(entity);
                 info!("Spawned primitive Sphere: {:?}", entity);
             }
-            SpawnPrimitiveKind::Light => {
+            SpawnPrimitiveKind::Cylinder => {
+                let mut meshes = world.resource_mut::<Assets<Mesh>>();
+                let mesh_handle = meshes.add(Cylinder::new(0.5, 1.5));
+                let mut materials = world.resource_mut::<Assets<StandardMaterial>>();
+                let mat_handle = materials.add(StandardMaterial {
+                    base_color: Color::srgb(0.2, 0.8, 0.5),
+                    perceptual_roughness: 0.35,
+                    ..default()
+                });
+
+                let entity = world
+                    .spawn((
+                        SceneEntity,
+                        Name::new("Cylinder"),
+                        Mesh3d(mesh_handle),
+                        MeshMaterial3d(mat_handle),
+                        Transform::from_xyz(0.0, 0.75, 0.0),
+                    ))
+                    .id();
+
+                world.resource_mut::<InspectorSelection>().0 = Some(entity);
+                info!("Spawned primitive Cylinder: {:?}", entity);
+            }
+            SpawnPrimitiveKind::Plane => {
+                let mut meshes = world.resource_mut::<Assets<Mesh>>();
+                let mesh_handle = meshes.add(Plane3d::default().mesh().size(10.0, 10.0));
+                let mut materials = world.resource_mut::<Assets<StandardMaterial>>();
+                let mat_handle = materials.add(StandardMaterial {
+                    base_color: Color::srgb(0.3, 0.35, 0.4),
+                    perceptual_roughness: 0.8,
+                    ..default()
+                });
+
+                let entity = world
+                    .spawn((
+                        SceneEntity,
+                        Name::new("Plane Ground"),
+                        Mesh3d(mesh_handle),
+                        MeshMaterial3d(mat_handle),
+                        Transform::IDENTITY,
+                    ))
+                    .id();
+
+                world.resource_mut::<InspectorSelection>().0 = Some(entity);
+                info!("Spawned primitive Plane: {:?}", entity);
+            }
+            SpawnPrimitiveKind::Capsule => {
+                let mut meshes = world.resource_mut::<Assets<Mesh>>();
+                let mesh_handle = meshes.add(Capsule3d::default());
+                let mut materials = world.resource_mut::<Assets<StandardMaterial>>();
+                let mat_handle = materials.add(StandardMaterial {
+                    base_color: Color::srgb(0.8, 0.3, 0.7),
+                    perceptual_roughness: 0.4,
+                    ..default()
+                });
+
+                let entity = world
+                    .spawn((
+                        SceneEntity,
+                        Name::new("Capsule"),
+                        Mesh3d(mesh_handle),
+                        MeshMaterial3d(mat_handle),
+                        Transform::from_xyz(0.0, 1.0, 0.0),
+                    ))
+                    .id();
+
+                world.resource_mut::<InspectorSelection>().0 = Some(entity);
+                info!("Spawned primitive Capsule: {:?}", entity);
+            }
+            SpawnPrimitiveKind::Torus => {
+                let mut meshes = world.resource_mut::<Assets<Mesh>>();
+                let mesh_handle = meshes.add(Torus::default());
+                let mut materials = world.resource_mut::<Assets<StandardMaterial>>();
+                let mat_handle = materials.add(StandardMaterial {
+                    base_color: Color::srgb(0.9, 0.7, 0.1),
+                    perceptual_roughness: 0.3,
+                    ..default()
+                });
+
+                let entity = world
+                    .spawn((
+                        SceneEntity,
+                        Name::new("Torus"),
+                        Mesh3d(mesh_handle),
+                        MeshMaterial3d(mat_handle),
+                        Transform::from_xyz(0.0, 0.5, 0.0),
+                    ))
+                    .id();
+
+                world.resource_mut::<InspectorSelection>().0 = Some(entity);
+                info!("Spawned primitive Torus: {:?}", entity);
+            }
+            SpawnPrimitiveKind::Light | SpawnPrimitiveKind::PointLight => {
                 let entity = world
                     .spawn((
                         SceneEntity,
@@ -960,6 +1109,115 @@ pub fn handle_spawn_primitives(
 
                 world.resource_mut::<InspectorSelection>().0 = Some(entity);
                 info!("Spawned Point Light: {:?}", entity);
+            }
+            SpawnPrimitiveKind::DirectionalLight => {
+                let entity = world
+                    .spawn((
+                        SceneEntity,
+                        Name::new("Sun (Directional Light)"),
+                        DirectionalLight {
+                            illuminance: 10_000.0,
+                            shadow_maps_enabled: true,
+                            ..default()
+                        },
+                        Transform::from_xyz(5.0, 10.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+                    ))
+                    .id();
+
+                world.resource_mut::<InspectorSelection>().0 = Some(entity);
+                info!("Spawned Sun (Directional Light): {:?}", entity);
+            }
+            SpawnPrimitiveKind::SpotLight => {
+                let entity = world
+                    .spawn((
+                        SceneEntity,
+                        Name::new("Spot Light"),
+                        SpotLight {
+                            intensity: 2_000_000.0,
+                            range: 25.0,
+                            inner_angle: 0.5,
+                            outer_angle: 0.8,
+                            shadow_maps_enabled: true,
+                            ..default()
+                        },
+                        Transform::from_xyz(0.0, 6.0, 0.0).looking_at(Vec3::ZERO, Vec3::Y),
+                    ))
+                    .id();
+
+                world.resource_mut::<InspectorSelection>().0 = Some(entity);
+                info!("Spawned Spot Light: {:?}", entity);
+            }
+            SpawnPrimitiveKind::UiButton => {
+                let btn_entity = world
+                    .spawn((
+                        SceneEntity,
+                        Name::new("UI Button"),
+                        crate::scene::components::UiButtonClickAction::default(),
+                        Node {
+                            width: px(130),
+                            height: px(38),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            border_radius: BorderRadius::all(px(5)),
+                            ..default()
+                        },
+                        BackgroundColor(Color::srgb(0.15, 0.45, 0.75)),
+                    ))
+                    .id();
+
+                world.spawn((
+                    Pickable::IGNORE,
+                    Text::new("Interactive Button"),
+                    TextFont {
+                        font_size: bevy::text::FontSize::Px(12.0),
+                        ..default()
+                    },
+                    TextColor(Color::WHITE),
+                    ChildOf(btn_entity),
+                ));
+
+                world.resource_mut::<InspectorSelection>().0 = Some(btn_entity);
+                info!("Spawned UI Button: {:?}", btn_entity);
+            }
+            SpawnPrimitiveKind::UiText => {
+                let entity = world
+                    .spawn((
+                        SceneEntity,
+                        Name::new("UI Text Label"),
+                        Text::new("Hello Bevy World"),
+                        TextFont {
+                            font_size: bevy::text::FontSize::Px(16.0),
+                            ..default()
+                        },
+                        TextColor(Color::WHITE),
+                        Node {
+                            margin: UiRect::all(px(10)),
+                            ..default()
+                        },
+                    ))
+                    .id();
+
+                world.resource_mut::<InspectorSelection>().0 = Some(entity);
+                info!("Spawned UI Text: {:?}", entity);
+            }
+            SpawnPrimitiveKind::UiPanel => {
+                let entity = world
+                    .spawn((
+                        SceneEntity,
+                        Name::new("UI Panel"),
+                        Node {
+                            width: px(220),
+                            height: px(140),
+                            padding: UiRect::all(px(10)),
+                            border_radius: BorderRadius::all(px(6)),
+                            ..default()
+                        },
+                        BackgroundColor(Color::srgba(0.1, 0.12, 0.18, 0.85)),
+                    ))
+                    .id();
+
+                world.resource_mut::<InspectorSelection>().0 = Some(entity);
+                info!("Spawned UI Panel: {:?}", entity);
             }
             SpawnPrimitiveKind::Empty => {
                 let entity = world

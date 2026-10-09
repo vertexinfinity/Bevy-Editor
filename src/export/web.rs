@@ -215,9 +215,23 @@ impl Exporter for WebExporter {
             return Err(format!("WebAssembly compilation failed:\n{last_lines}"));
         }
 
-        // 5. Check if wasm-bindgen is available to produce JS glue and optimized .wasm
+        // 5. Locate the compiled .wasm file in target-dir
         let profile_dir = if ctx.release { "release" } else { "debug" };
-        let raw_wasm = target_dir.join("wasm32-unknown-unknown").join(profile_dir).join(format!("{}.wasm", pkg_name));
+        let wasm_folder = target_dir.join("wasm32-unknown-unknown").join(profile_dir);
+        let mut raw_wasm = wasm_folder.join(format!("{}.wasm", pkg_name));
+
+        if !raw_wasm.is_file() {
+            // Scan for any .wasm artifact in wasm_folder
+            if let Ok(entries) = fs::read_dir(&wasm_folder) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().and_then(|ext| ext.to_str()) == Some("wasm") {
+                        raw_wasm = path;
+                        break;
+                    }
+                }
+            }
+        }
 
         let has_wasm_bindgen = Command::new("wasm-bindgen")
             .arg("--version")
@@ -244,15 +258,17 @@ impl Exporter for WebExporter {
             }
         }
 
-        // Fallback: If wasm-bindgen CLI is not installed, copy the compiled wasm and write a fallback loader
+        // Fallback: copy compiled wasm directly
         if raw_wasm.is_file() {
             let dest_wasm = export_dir.join(format!("{}_bg.wasm", pkg_name));
             let _ = fs::copy(&raw_wasm, &dest_wasm);
+            let raw_dest = export_dir.join(format!("{}.wasm", pkg_name));
+            let _ = fs::copy(&raw_wasm, &raw_dest);
         }
 
         Ok(ExportResult {
-            primary_artifact: export_dir.clone(),
-            message: format!("WebAssembly compilation complete. Bundle scaffolding saved in {}", export_dir.display()),
+            primary_artifact: export_dir.join("index.html"),
+            message: format!("WebAssembly export ready in {}. (Serve with `python -m http.server` or upload to itch.io)", export_dir.display()),
         })
     }
 }
