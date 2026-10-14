@@ -17,7 +17,7 @@ name = "bevylite"
 path = "src/bin/bevylite.rs"
 
 [dependencies]
-bevy = { path = "../Engine/bevy", default-features = true, features = [
+bevy = { git = "https://github.com/bevyengine/bevy", branch = "main", default-features = true, features = [
     "bevy_inspector",
     "bevy_feathers",
     "bevy_camera_controller",

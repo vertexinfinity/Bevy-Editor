@@ -14,9 +14,10 @@ Built on Bevy's native UI system (`bevy_ui` + `bevy_feathers`), built-in camera 
 - **Drag-and-Drop 3D Models**: Uses Bevy's native [`FileDragAndDrop`](src/scene/drag_drop.rs). Drag any `.glb`, `.gltf`, or `.ron` file directly from Windows Explorer into the editor window to spawn it immediately.
 - **Dynamic Scene Management**: Author, modify, save, and reload scenes (`.ron` / `.bsn`) via [`DynamicWorld`](src/scene/save_load.rs).
 - **Extensible Multi-Platform Exporter**: Pluggable [`Exporter`](src/export/mod.rs) architecture:
-  - 🤖 **Android**: Direct `cargo-apk` build or turnkey Gradle project scaffolding (via Bevy's official mobile integration).
   - 🪟 **Windows**: Standalone optimized executable packaging with bundled assets.
+  - 🐧 **Linux**: Standalone ELF executable build with asset bundling.
   - 🌐 **Web**: WebAssembly (WASM) / HTML5 canvas deployment.
+  - 🤖 **Android**: Direct `cargo-apk` build or turnkey Gradle project scaffolding (via Bevy's official mobile integration).
   - 🍎 **iOS**: Xcode project scaffolding for App Store / test flight deployment.
 
 ---
@@ -49,9 +50,10 @@ src/
 └── export/            # Multi-target export engine
     ├── mod.rs         # Exporter trait & ExportRegistry
     ├── android.rs     # Android APK & Gradle scaffolding
-    ├── windows.rs     # Windows desktop packaging
+    ├── ios.rs         # iOS Xcode scaffolding
+    ├── linux.rs       # Linux desktop packaging
     ├── web.rs         # WebAssembly bundle generation
-    └── ios.rs         # iOS Xcode scaffolding
+    └── windows.rs     # Windows desktop packaging
 ```
 
 ---

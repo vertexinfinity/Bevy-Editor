@@ -47,7 +47,7 @@ COMMANDS:
     new <PROJECT_NAME>        Scaffold a clean, standalone Bevy game project
     open [PATH]               Launch the Bevylite visual editor (opens path if specified)
     build --target <TARGET>   Headlessly build and export for a target platform
-                              [targets: windows, android, web, ios]
+                              [targets: windows, linux, android, web, ios]
     scene inspect <FILE>      Headlessly inspect a .ron / .bsn scene file
     tools                     List all registered viewport editing tools
     mcp                       Start the Bevylite Model Context Protocol (MCP) server (stdio)
@@ -150,6 +150,10 @@ fn handle_build(args: &[String]) {
             let exporter = bevy_editor_lib::export::windows::WindowsExporter;
             exporter.export(&config)
         }
+        "linux" => {
+            let exporter = bevy_editor_lib::export::linux::LinuxExporter;
+            exporter.export(&config)
+        }
         "web" => {
             let exporter = bevy_editor_lib::export::web::WebExporter;
             exporter.export(&config)
@@ -159,7 +163,7 @@ fn handle_build(args: &[String]) {
             exporter.export(&config)
         }
         other => {
-            eprintln!("Unsupported target: '{}'. Valid targets are: windows, android, web, ios", other);
+            eprintln!("Unsupported target: '{}'. Valid targets are: windows, linux, android, web, ios", other);
             std::process::exit(1);
         }
     };
@@ -452,13 +456,13 @@ fn handle_mcp() {
                             },
                             {
                                 "name": "bevylite_export_build",
-                                "description": "Headlessly builds and exports game for Windows, Android, Web, or iOS.",
+                                "description": "Headlessly builds and exports game for Windows, Linux, Android, Web, or iOS.",
                                 "inputSchema": {
                                     "type": "object",
                                     "properties": {
-                                        "target": { "type": "string", "enum": ["windows", "android", "web", "ios"], "description": "Target platform" },
+                                        "target": { "type": "string", "enum": ["windows", "linux", "android", "web", "ios"], "description": "Target platform" },
                                         "output_dir": { "type": "string", "description": "Output directory" },
-                                        "project_dir": { "type": "string", "description": "Windows Cargo project directory containing Cargo.toml" }
+                                        "project_dir": { "type": "string", "description": "Cargo project directory containing Cargo.toml" }
                                     },
                                     "required": ["target"]
                                 }
@@ -641,6 +645,7 @@ fn handle_mcp() {
                         let res = match target {
                             "android" => bevy_editor_lib::export::android::AndroidExporter.export(&config),
                             "windows" => bevy_editor_lib::export::windows::WindowsExporter.export(&config),
+                            "linux" => bevy_editor_lib::export::linux::LinuxExporter.export(&config),
                             "web" => bevy_editor_lib::export::web::WebExporter.export(&config),
                             "ios" => bevy_editor_lib::export::ios::IosExporter.export(&config),
                             _ => Err("Invalid target".to_string()),

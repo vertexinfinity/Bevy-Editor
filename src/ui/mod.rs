@@ -25,17 +25,32 @@ fn setup_editor_fonts(
     asset_server: Res<AssetServer>,
     mut default_font_source: ResMut<bevy::text::DefaultFontSource>,
 ) {
-    let symbol_handle: Handle<Font> = asset_server.load("fonts/seguisym.ttf");
-    let emoji_handle: Handle<Font> = asset_server.load("fonts/seguiemj.ttf");
     let lucide_handle: Handle<Font> = asset_server.load("fonts/lucide.ttf");
 
-    // Configure the default font chain with Segoe UI Symbol & Emoji fallback
-    default_font_source.0 = bevy::text::FontSource::List(vec![
+    let mut font_sources = vec![
         bevy::text::FontSource::Default,
-        bevy::text::FontSource::Handle(symbol_handle.clone()),
-        bevy::text::FontSource::Handle(emoji_handle.clone()),
         bevy::text::FontSource::Handle(lucide_handle.clone()),
-    ]);
+    ];
+
+    let has_symbol = std::path::Path::new("assets/fonts/seguisym.ttf").exists();
+    let symbol_handle: Handle<Font> = if has_symbol {
+        let handle = asset_server.load("fonts/seguisym.ttf");
+        font_sources.push(bevy::text::FontSource::Handle(handle.clone()));
+        handle
+    } else {
+        lucide_handle.clone()
+    };
+
+    let has_emoji = std::path::Path::new("assets/fonts/seguiemj.ttf").exists();
+    let emoji_handle: Handle<Font> = if has_emoji {
+        let handle = asset_server.load("fonts/seguiemj.ttf");
+        font_sources.push(bevy::text::FontSource::Handle(handle.clone()));
+        handle
+    } else {
+        lucide_handle.clone()
+    };
+
+    default_font_source.0 = bevy::text::FontSource::List(font_sources);
 
     commands.insert_resource(theme::EditorFonts {
         symbol: symbol_handle,
