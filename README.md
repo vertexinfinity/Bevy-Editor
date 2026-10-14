@@ -58,7 +58,16 @@ src/
 
 ---
 
-## Controls
+## Build Profiles (Bevylite Tiers)
+
+Users can select how lightweight they want the editor depending on workflow and compile constraints:
+
+| Profile | Command | Included Features |
+| :--- | :--- | :--- |
+| **⚡ Minimal Lite** | `cargo run --no-default-features --features lite` | Bare minimum 3D scene viewer, camera controller, basic primitives |
+| **◈ Standard (Default)** | `cargo run` | Feathers dark UI, Scene Hierarchy, Inspector, 3D Transform Gizmos, glTF |
+| **🚀 Fast Dev Iteration** | `cargo run --features dynamic_linking` | Shared dynamic engine linking (~1.5s re-links during development) |
+| **🛠️ Pro / Full** | `cargo run --features "remote,compressed_textures,solari"` | JSON-RPC MCP server, KTX2/DDS compression, Solari real-time ray tracing |
 
 | Input | Action |
 | :--- | :--- |

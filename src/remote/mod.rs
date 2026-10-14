@@ -7,16 +7,7 @@
 //! - Trigger Play-In-Editor (PIE) simulation (`editor/play_mode`)
 //! - Take camera snapshots or query transforms
 
-use bevy::{
-    inspector::InspectorSelection,
-    prelude::*,
-    remote::{
-        error_codes, http::RemoteHttpPlugin, BrpError, BrpResult, RemotePlugin,
-    },
-};
-use serde_json::{json, Value};
-use crate::core::play_mode::{PlayModeAction, PlayState};
-use crate::scene::SceneEntity;
+use bevy::prelude::*;
 
 pub const DEFAULT_EDITOR_BRP_PORT: u16 = 15703;
 
@@ -32,8 +23,34 @@ impl Default for EditorRemotePlugin {
     }
 }
 
+#[cfg(not(feature = "remote"))]
+impl Plugin for EditorRemotePlugin {
+    fn build(&self, _app: &mut App) {
+        // No-op when remote feature is disabled to keep Bevylite lightweight
+    }
+}
+
+#[cfg(feature = "remote")]
 impl Plugin for EditorRemotePlugin {
     fn build(&self, app: &mut App) {
+        inner::build_remote(self, app);
+    }
+}
+
+#[cfg(feature = "remote")]
+mod inner {
+    use super::*;
+    use bevy::{
+        inspector::InspectorSelection,
+        remote::{
+            error_codes, http::RemoteHttpPlugin, BrpError, BrpResult, RemotePlugin,
+        },
+    };
+    use serde_json::{json, Value};
+    use crate::core::play_mode::{PlayModeAction, PlayState};
+    use crate::scene::SceneEntity;
+
+    pub fn build_remote(plugin: &EditorRemotePlugin, app: &mut App) {
         app.add_plugins((
             RemotePlugin::default()
                 .with_method_main("editor/status", status_handler)
@@ -43,13 +60,13 @@ impl Plugin for EditorRemotePlugin {
                 .with_method_main("editor/play_mode", play_mode_handler),
             RemoteHttpPlugin::default()
                 .with_address(std::net::Ipv4Addr::LOCALHOST)
-                .with_port(self.port),
+                .with_port(plugin.port),
         ));
 
-        info!("Editor Remote BRP Server listening on http://127.0.0.1:{}", self.port);
+        info!("Editor Remote BRP Server listening on http://127.0.0.1:{}", plugin.port);
     }
-}
 
+#[cfg(feature = "remote")]
 /// Helper to format invalid param errors
 fn invalid_params(message: impl Into<String>) -> BrpError {
     BrpError {
@@ -224,4 +241,5 @@ fn play_mode_handler(In(params): In<Option<Value>>, world: &mut World) -> BrpRes
         "status": "ok",
         "action": action,
     }))
+}
 }
