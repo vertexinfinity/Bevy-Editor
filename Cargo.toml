@@ -55,6 +55,8 @@ bevy = { git = "https://github.com/bevyengine/bevy", branch = "main", default-fe
     "picking",
     "bevy_log",
     "sysinfo_plugin",
+    "default_font",
+    "system_font_discovery",
     "serialize",
     "debug",
 ] }

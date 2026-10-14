@@ -27,34 +27,47 @@ fn setup_editor_fonts(
 ) {
     let lucide_handle: Handle<Font> = asset_server.load("fonts/lucide.ttf");
 
-    let mut font_sources = vec![
-        bevy::text::FontSource::Default,
-        bevy::text::FontSource::Handle(lucide_handle.clone()),
-    ];
+    let mut font_sources = Vec::new();
 
-    let has_symbol = std::path::Path::new("assets/fonts/seguisym.ttf").exists();
-    let symbol_handle: Handle<Font> = if has_symbol {
+    #[cfg(windows)]
+    {
+        font_sources.push(bevy::text::FontSource::Family("Segoe UI".into()));
+        font_sources.push(bevy::text::FontSource::Family("Segoe UI Symbol".into()));
+        font_sources.push(bevy::text::FontSource::Family("Segoe UI Emoji".into()));
+    }
+    #[cfg(target_os = "linux")]
+    {
+        font_sources.push(bevy::text::FontSource::Family("Ubuntu".into()));
+        font_sources.push(bevy::text::FontSource::Family("DejaVu Sans".into()));
+        font_sources.push(bevy::text::FontSource::Family("Noto Color Emoji".into()));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        font_sources.push(bevy::text::FontSource::Family("SF Pro".into()));
+        font_sources.push(bevy::text::FontSource::Family("Apple Color Emoji".into()));
+    }
+
+    // Default font fallback (embedded FiraMono)
+    font_sources.push(bevy::text::FontSource::Default);
+
+    // Lucide icon font glyphs
+    font_sources.push(bevy::text::FontSource::Handle(lucide_handle.clone()));
+
+    // Local optional font file overrides if present in assets/
+    if std::path::Path::new("assets/fonts/seguisym.ttf").exists() {
         let handle = asset_server.load("fonts/seguisym.ttf");
-        font_sources.push(bevy::text::FontSource::Handle(handle.clone()));
-        handle
-    } else {
-        lucide_handle.clone()
-    };
-
-    let has_emoji = std::path::Path::new("assets/fonts/seguiemj.ttf").exists();
-    let emoji_handle: Handle<Font> = if has_emoji {
+        font_sources.push(bevy::text::FontSource::Handle(handle));
+    }
+    if std::path::Path::new("assets/fonts/seguiemj.ttf").exists() {
         let handle = asset_server.load("fonts/seguiemj.ttf");
-        font_sources.push(bevy::text::FontSource::Handle(handle.clone()));
-        handle
-    } else {
-        lucide_handle.clone()
-    };
+        font_sources.push(bevy::text::FontSource::Handle(handle));
+    }
 
     default_font_source.0 = bevy::text::FontSource::List(font_sources);
 
     commands.insert_resource(theme::EditorFonts {
-        symbol: symbol_handle,
-        emoji: emoji_handle,
+        symbol: Handle::default(),
+        emoji: Handle::default(),
         lucide: lucide_handle,
     });
 }
