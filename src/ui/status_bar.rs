@@ -250,6 +250,7 @@ fn get_available_disk_gib(path: &std::path::Path) -> Option<f64> {
 
 pub fn update_status_bar(
     time: Res<Time>,
+    play_state: Option<Res<crate::core::play_mode::PlayState>>,
     export_status: Res<ExportStatus>,
     selection: Res<InspectorSelection>,
     diagnostics: Res<bevy::diagnostic::DiagnosticsStore>,
@@ -320,7 +321,36 @@ pub fn update_status_bar(
         }
     }
 
-    if export_status.is_changed() {
+    if let Some(state) = play_state.as_deref() {
+        if *state == crate::core::play_mode::PlayState::Playing {
+            if let Ok(mut text) = text_query.single_mut() {
+                text.0 = "🎮 PLAYING IN VIEWPORT (Active) | WASD: Move/Pan | Space: Jump | ⏹ Stop to Exit".to_string();
+            }
+        } else if *state == crate::core::play_mode::PlayState::Paused {
+            if let Ok(mut text) = text_query.single_mut() {
+                text.0 = "⏸ SIMULATION PAUSED | Click ▶ Play to Resume | ⏹ Stop to Exit".to_string();
+            }
+        } else if export_status.is_changed() {
+            if let Ok(mut text) = text_query.single_mut() {
+                match export_status.as_ref() {
+                    ExportStatus::Idle => {
+                        text.0 = "Ready | Fly Cam: WASD + Hold RMB | Speed: Scroll Wheel".to_string();
+                    }
+                    ExportStatus::InProgress { target, progress } => {
+                        text.0 = format!("Exporting {target}: {progress}");
+                    }
+                    ExportStatus::Success { target, message, .. } => {
+                        text.0 = format!("Success [{target}]: {message}");
+                    }
+                    ExportStatus::Failed { target, error } => {
+                        let first_line = error.lines().find(|l| !l.trim().is_empty()).unwrap_or("build error");
+                        let short_err: String = first_line.chars().take(90).collect();
+                        text.0 = format!("Error [{target}]: {short_err}");
+                    }
+                }
+            }
+        }
+    } else if export_status.is_changed() {
         if let Ok(mut text) = text_query.single_mut() {
             match export_status.as_ref() {
                 ExportStatus::Idle => {
