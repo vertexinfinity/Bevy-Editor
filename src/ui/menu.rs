@@ -854,6 +854,21 @@ pub fn handle_menu_actions(world: &mut World) {
                     current_scene.is_modified = false;
                 }
 
+                // Sync any editor model assets to project assets so referenced models are never missing
+                let editor_models = std::path::Path::new("assets/models");
+                let project_models = project_dir.join("assets").join("models");
+                if editor_models.is_dir() {
+                    let _ = std::fs::create_dir_all(&project_models);
+                    if let Ok(entries) = std::fs::read_dir(editor_models) {
+                        for entry in entries.flatten() {
+                            let dest = project_models.join(entry.file_name());
+                            if !dest.exists() {
+                                let _ = std::fs::copy(entry.path(), dest);
+                            }
+                        }
+                    }
+                }
+
                 // Wire project main.rs to load default_scene.bsn on startup
                 let main_src_path = project_dir.join("src").join("main.rs");
                 if main_src_path.is_file() {
@@ -863,13 +878,14 @@ pub fn handle_menu_actions(world: &mut World) {
                                 r#"//! Standalone Bevy Game created by Bevy Editor.
 
 use bevy::prelude::*;
+use bevy::world_serialization::DynamicWorldRoot;
 
 fn main() {{
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {{
             primary_window: Some(Window {{
                 title: "MyBevyGame".to_string(),
-                resolution: (1280.0_f32, 720.0_f32).into(),
+                resolution: (1280, 720).into(),
                 ..default()
             }}),
             ..default()
@@ -885,12 +901,27 @@ fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>) {{
         Transform::from_xyz(0.0, 5.0, 10.0).looking_at(Vec3::new(0.0, 1.0, 0.0), Vec3::Y),
     ));
 
+    // Directional Sunlight Fallback
+    commands.spawn((
+        DirectionalLight {{
+            illuminance: 10_000.0,
+            shadow_maps_enabled: true,
+            ..default()
+        }},
+        Transform::from_xyz(4.0, 8.0, 4.0).looking_at(Vec3::ZERO, Vec3::Y),
+    ));
+
     // Load default scene configured in Bevy Editor
-    commands.spawn(DynamicSceneRoot(asset_server.load("scenes/default_scene.bsn")));
+    commands.spawn(DynamicWorldRoot(asset_server.load("scenes/default_scene.bsn")));
 }}
 "#
                             );
                             let _ = std::fs::write(&main_src_path, updated_main);
+                        } else if main_src.contains("DynamicSceneRoot") || main_src.contains("(1280.0_f32, 720.0_f32)") {
+                            let patched = main_src
+                                .replace("DynamicSceneRoot", "bevy::world_serialization::DynamicWorldRoot")
+                                .replace("(1280.0_f32, 720.0_f32)", "(1280, 720)");
+                            let _ = std::fs::write(&main_src_path, patched);
                         }
                     }
                 }

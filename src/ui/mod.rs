@@ -81,6 +81,7 @@ impl Plugin for EditorUiPlugin {
         app.insert_resource(UiTheme(create_dark_theme()))
             .init_state::<EditorAppState>()
             .init_resource::<hub::ActiveProject>()
+            .init_resource::<hub::ProjectRegistry>()
             .init_resource::<menu::FileMenuState>()
             .init_resource::<menu::BuildMenuState>()
             .init_resource::<menu::ActiveWorkspace>()

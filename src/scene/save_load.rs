@@ -39,6 +39,7 @@ pub fn save_world_to_scene(world: &World, path: &Path) -> Result<(), Box<dyn std
 
     let dynamic_world = bevy::world_serialization::DynamicWorldBuilder::from_world(world, &type_registry)
         .deny_component::<EditorInternal>()
+        .deny_component::<SceneEntity>()
         .deny_component::<bevy::camera::visibility::VisibilityClass>()
         .deny_component::<bevy::camera::visibility::ViewVisibility>()
         .extract_entities(scene_entities.into_iter())

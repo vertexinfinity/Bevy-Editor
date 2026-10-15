@@ -101,14 +101,24 @@ pub fn handle_new(args: &[String]) {
     }
 
     let project_name = &args[0];
-    let target_dir = if args.len() >= 3 && args[1] == "--output" {
-        PathBuf::from(&args[2])
-    } else {
-        env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join(project_name)
-    };
+    let mut target_dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let mut template = crate::project::ProjectTemplateKind::Action3D;
 
-    println!("Scaffolding Bevy game project '{}' into {:?}...", project_name, target_dir);
-    match crate::project::ProjectScaffolder::create_project(&target_dir, project_name) {
+    let mut i = 1;
+    while i < args.len() {
+        if args[i] == "--output" && i + 1 < args.len() {
+            target_dir = PathBuf::from(&args[i + 1]);
+            i += 2;
+        } else if args[i] == "--template" && i + 1 < args.len() {
+            template = crate::project::ProjectTemplateKind::from_id(&args[i + 1]);
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+
+    println!("Scaffolding Bevy game project '{}' [{}] into {:?}...", project_name, template.display_name(), target_dir);
+    match crate::project::ProjectScaffolder::create_project_with_template(&target_dir, project_name, template) {
         Ok(path) => {
             println!("Successfully created project at {:?}", path);
             println!("\nTo get started:");
@@ -757,7 +767,7 @@ pub fn create_scene_ron(path: &Path, preset: &str) -> Result<String, String> {
         ),
         "bevy_light::directional_light::DirectionalLight": (
           illuminance: 10000.0,
-          shadows_enabled: true,
+          shadow_maps_enabled: true,
         ),
       },
     ),
@@ -795,7 +805,7 @@ pub fn create_scene_ron(path: &Path, preset: &str) -> Result<String, String> {
         ),
         "bevy_light::directional_light::DirectionalLight": (
           illuminance: 12000.0,
-          shadows_enabled: true,
+          shadow_maps_enabled: true,
         ),
       },
     ),

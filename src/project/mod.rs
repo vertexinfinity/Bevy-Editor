@@ -2,4 +2,4 @@
 
 pub mod scaffold;
 
-pub use scaffold::ProjectScaffolder;
+pub use scaffold::{ProjectScaffolder, ProjectTemplateKind};

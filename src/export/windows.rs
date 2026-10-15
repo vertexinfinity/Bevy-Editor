@@ -50,26 +50,61 @@ impl Exporter for WindowsExporter {
             return Err(format!("No Cargo.toml found in {}", project_dir.display()));
         }
 
-        // Ensure the game project has an isolated [workspace] table if not already declared,
-        // preventing Cargo workspace hierarchy conflicts when the user project resides inside another directory with a Cargo.toml.
+        // Ensure the game project has an isolated [workspace] table and compatible Bevy dependencies
         if let Ok(content) = fs::read_to_string(&manifest_path) {
-            if !content.contains("[workspace]") {
+            let mut updated = content.clone();
+            if !updated.contains("[workspace]") {
                 info!("Isolating target game project from outer cargo workspaces by appending [workspace] table...");
-                let updated = format!("{}\n\n# Ensure root workspace isolation for standalone builds\n[workspace]\n", content.trim_end());
+                updated = format!("{}\n\n# Ensure root workspace isolation for standalone builds\n[workspace]\n", updated.trim_end());
+            }
+            if updated.contains("version = \"0.15\"") {
+                info!("Migrating user project Cargo.toml from Bevy 0.15 to Bevy git main (0.20-dev)...");
+                updated = updated.replace(
+                    "version = \"0.15\", default-features = false, features = [\n    \"bevy_core_pipeline\",\n    \"bevy_pbr\",\n    \"bevy_render\",\n    \"bevy_winit\",\n    \"bevy_asset\",\n    \"bevy_gltf\",\n    \"bevy_scene\",\n    \"tonemapping_luts\",\n    \"png\",\n]",
+                    "git = \"https://github.com/bevyengine/bevy\", branch = \"main\", default-features = false, features = [\"3d\", \"serialize\", \"png\", \"tonemapping_luts\"]",
+                );
+                // Also remove stale Cargo.lock if migrating from 0.15 to avoid uuid conflicts
+                let stale_lock = project_dir.join("Cargo.lock");
+                if stale_lock.is_file() {
+                    let _ = fs::remove_file(stale_lock);
+                }
+            }
+            if updated != content {
                 let _ = fs::write(&manifest_path, updated);
             }
         }
 
-        // Auto-migrate legacy Bevy 0.15 API incompatibilities in starter projects if present
+        // Auto-migrate legacy Bevy API syntax in starter projects if present
         let main_src = project_dir.join("src").join("main.rs");
         if main_src.is_file() {
             if let Ok(src_content) = fs::read_to_string(&main_src) {
-                if src_content.contains("shadow_maps_enabled") || src_content.contains("(1280.0, 720.0)") {
-                    info!("Auto-patching legacy template syntax in {} for Bevy 0.15 compatibility...", main_src.display());
+                if src_content.contains("shadows_enabled")
+                    || src_content.contains("(1280.0, 720.0)")
+                    || src_content.contains("(1280.0_f32, 720.0_f32)")
+                    || src_content.contains("DynamicSceneRoot")
+                {
+                    info!("Auto-patching legacy template syntax in {} for Bevy engine compatibility...", main_src.display());
                     let patched = src_content
-                        .replace("shadow_maps_enabled", "shadows_enabled")
-                        .replace("(1280.0, 720.0)", "(1280.0_f32, 720.0_f32)");
+                        .replace("shadows_enabled", "shadow_maps_enabled")
+                        .replace("(1280.0, 720.0)", "(1280, 720)")
+                        .replace("(1280.0_f32, 720.0_f32)", "(1280, 720)")
+                        .replace("DynamicSceneRoot", "bevy::world_serialization::DynamicWorldRoot");
                     let _ = fs::write(&main_src, patched);
+                }
+            }
+        }
+
+        // Ensure models from editor library are synchronized to user project
+        let editor_models = std::path::Path::new("assets/models");
+        let project_models = project_dir.join("assets").join("models");
+        if editor_models.is_dir() {
+            let _ = fs::create_dir_all(&project_models);
+            if let Ok(entries) = fs::read_dir(editor_models) {
+                for entry in entries.flatten() {
+                    let dest = project_models.join(entry.file_name());
+                    if !dest.exists() {
+                        let _ = fs::copy(entry.path(), dest);
+                    }
                 }
             }
         }
@@ -88,6 +123,30 @@ impl Exporter for WindowsExporter {
                 let file_name = scene_path.file_name().unwrap_or_default();
                 let dest = assets_dir.join(file_name);
                 fs::copy(scene_path, &dest).map_err(|e| format!("Failed to copy scene asset: {e}"))?;
+            }
+        }
+
+        // Sanitize any copied scene files to ensure editor-only SceneEntity is stripped and fields are compatible
+        for bsn_candidate in [
+            assets_dir.join("scenes").join("default_scene.bsn"),
+            assets_dir.join("default_scene.bsn"),
+            project_dir.join("assets").join("scenes").join("default_scene.bsn"),
+        ] {
+            if bsn_candidate.is_file() {
+                if let Ok(content) = fs::read_to_string(&bsn_candidate) {
+                    let mut cleaned = content.clone();
+                    if cleaned.contains("bevy_editor_lib::scene::save_load::SceneEntity") {
+                        cleaned = cleaned
+                            .replace("\"bevy_editor_lib::scene::save_load::SceneEntity\": (),", "")
+                            .replace("\"bevy_editor_lib::scene::save_load::SceneEntity\": ()", "");
+                    }
+                    if cleaned.contains("shadows_enabled") {
+                        cleaned = cleaned.replace("shadows_enabled", "shadow_maps_enabled");
+                    }
+                    if cleaned != content {
+                        let _ = fs::write(&bsn_candidate, cleaned);
+                    }
+                }
             }
         }
 
