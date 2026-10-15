@@ -19,8 +19,15 @@ pub struct ToolBtnMarker(pub &'static str);
 #[derive(Component)]
 pub struct ViewportTabMarker(pub &'static str);
 
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ViewportChipKind {
+    Gizmos,
+    Bounds,
+    Grid,
+}
+
 #[derive(Component)]
-pub struct ViewportOverlayMarker(pub &'static str);
+pub struct ViewportChipLabel(pub ViewportChipKind);
 
 pub fn spawn_tools_bar(mut commands: Commands, registry: Res<ToolRegistry>) {
     // 1. Sleek Scene / Game Tab Bar at upper left of viewport
@@ -101,12 +108,18 @@ pub fn spawn_tools_bar(mut commands: Commands, registry: Res<ToolRegistry>) {
         ChildOf(game_tab),
     ));
 
-    // Viewport Quick Toggles (Grid, Lighting, Stats)
-    for (label, active) in [("Grid: On", true), ("Light: On", true), ("Stats", false)] {
+    // Viewport Quick Toggles (Gizmos, Bounds, Grid)
+    let toggles = [
+        (ViewportChipKind::Gizmos, "Gizmos: On", true),
+        (ViewportChipKind::Bounds, "Bounds: On", true),
+        (ViewportChipKind::Grid, "Grid: On", true),
+    ];
+
+    for (kind, label, active) in toggles {
         let chip = commands
             .spawn((
                 EditorInternal,
-                ViewportOverlayMarker(label),
+                kind,
                 Node {
                     padding: UiRect::axes(px(6), px(2)),
                     border_radius: radius_button(),
@@ -118,10 +131,35 @@ pub fn spawn_tools_bar(mut commands: Commands, registry: Res<ToolRegistry>) {
                 BorderColor::all(if active { BORDER_ACCENT } else { BORDER_SUBTLE }),
                 ChildOf(tabs_root),
             ))
+            .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+                if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                    *bg = BackgroundColor(BG_HOVER);
+                }
+            })
+            .observe(move |trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>, settings: Res<crate::core::selection::ViewportGizmoSettings>| {
+                if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                    let active = match kind {
+                        ViewportChipKind::Gizmos => settings.show_gizmos,
+                        ViewportChipKind::Bounds => settings.show_bounds,
+                        ViewportChipKind::Grid => settings.show_grid,
+                    };
+                    *bg = BackgroundColor(if active { ACCENT_CYAN_DIM } else { BG_INPUT });
+                }
+            })
+            .observe(move |click: On<PointerClick>, mut settings: ResMut<crate::core::selection::ViewportGizmoSettings>| {
+                if click.button == PointerButton::Primary {
+                    match kind {
+                        ViewportChipKind::Gizmos => settings.show_gizmos = !settings.show_gizmos,
+                        ViewportChipKind::Bounds => settings.show_bounds = !settings.show_bounds,
+                        ViewportChipKind::Grid => settings.show_grid = !settings.show_grid,
+                    }
+                }
+            })
             .id();
 
         commands.spawn((
             EditorInternal,
+            ViewportChipLabel(kind),
             Pickable::IGNORE,
             Text::new(label),
             TextFont {
@@ -229,5 +267,36 @@ pub fn update_active_tool_highlight(
             *bg = BackgroundColor(BG_INPUT);
             *border = BorderColor::all(BORDER_SUBTLE);
         }
+    }
+}
+
+/// Keeps viewport overlay chips synchronized with `ViewportGizmoSettings`.
+pub fn update_viewport_chips(
+    settings: Res<crate::core::selection::ViewportGizmoSettings>,
+    mut chips: Query<(&ViewportChipKind, &mut BackgroundColor, &mut BorderColor)>,
+    mut labels: Query<(&ViewportChipLabel, &mut Text, &mut TextColor)>,
+) {
+    if !settings.is_changed() {
+        return;
+    }
+
+    for (kind, mut bg, mut border) in &mut chips {
+        let active = match kind {
+            ViewportChipKind::Gizmos => settings.show_gizmos,
+            ViewportChipKind::Bounds => settings.show_bounds,
+            ViewportChipKind::Grid => settings.show_grid,
+        };
+        *bg = BackgroundColor(if active { ACCENT_CYAN_DIM } else { BG_INPUT });
+        *border = BorderColor::all(if active { BORDER_ACCENT } else { BORDER_SUBTLE });
+    }
+
+    for (label_marker, mut text, mut color) in &mut labels {
+        let (name, active) = match label_marker.0 {
+            ViewportChipKind::Gizmos => ("Gizmos", settings.show_gizmos),
+            ViewportChipKind::Bounds => ("Bounds", settings.show_bounds),
+            ViewportChipKind::Grid => ("Grid", settings.show_grid),
+        };
+        text.0 = format!("{}: {}", name, if active { "On" } else { "Off" });
+        *color = TextColor(if active { ACCENT_CYAN } else { TEXT_MUTED });
     }
 }

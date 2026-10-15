@@ -155,6 +155,7 @@ impl Plugin for EditorUiPlugin {
                     menu::update_window_and_menu_title,
                     menu::update_mcp_bridge_status,
                     tools_bar::update_active_tool_highlight,
+                    tools_bar::update_viewport_chips,
                     hierarchy::update_hierarchy_list,
                     hierarchy::handle_spawn_primitives,
                     hierarchy::handle_hierarchy_collapse,

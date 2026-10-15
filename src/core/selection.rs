@@ -72,11 +72,30 @@ pub fn sync_editor_selection(
     }
 }
 
+/// User-configurable viewport gizmo and overlay visibility settings.
+#[derive(Resource, Debug, Clone)]
+pub struct ViewportGizmoSettings {
+    pub show_bounds: bool,
+    pub show_gizmos: bool,
+    pub show_grid: bool,
+}
+
+impl Default for ViewportGizmoSettings {
+    fn default() -> Self {
+        Self {
+            show_bounds: true,
+            show_gizmos: true,
+            show_grid: true,
+        }
+    }
+}
+
 pub struct SelectionPlugin;
 
 impl Plugin for SelectionPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<EditorSelection>()
+            .init_resource::<ViewportGizmoSettings>()
             .add_message::<SelectionChangedMessage>()
             .add_systems(
                 Update,
@@ -84,8 +103,39 @@ impl Plugin for SelectionPlugin {
                     sync_editor_selection,
                     sync_selection_and_tools_to_gizmo,
                     draw_selection_gizmo,
+                    handle_gizmo_toggle_shortcuts,
                 ),
             );
+    }
+}
+
+/// Keyboard shortcuts for viewport overlays:
+/// - Press 'B' to toggle mesh bounding boxes.
+/// - Press 'G' to toggle transform gizmos.
+pub fn handle_gizmo_toggle_shortcuts(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut settings: ResMut<ViewportGizmoSettings>,
+    hierarchy_state: Option<Res<crate::ui::hierarchy::HierarchyState>>,
+    text_edit_state: Option<Res<crate::ui::inspector::TransformTextEditState>>,
+) {
+    if let Some(hs) = hierarchy_state {
+        if hs.search_focused {
+            return;
+        }
+    }
+    if let Some(ts) = text_edit_state {
+        if ts.active.is_some() {
+            return;
+        }
+    }
+
+    if keys.just_pressed(KeyCode::KeyB) {
+        settings.show_bounds = !settings.show_bounds;
+        info!("Toggled Bounding Box Gizmos: {}", settings.show_bounds);
+    }
+    if keys.just_pressed(KeyCode::KeyG) {
+        settings.show_gizmos = !settings.show_gizmos;
+        info!("Toggled Transform Gizmos: {}", settings.show_gizmos);
     }
 }
 
@@ -94,10 +144,19 @@ impl Plugin for SelectionPlugin {
 pub fn sync_selection_and_tools_to_gizmo(
     inspector_sel: Res<InspectorSelection>,
     active_tool: Res<crate::core::tools::ActiveTool>,
+    gizmo_settings: Res<ViewportGizmoSettings>,
     mut settings: ResMut<bevy::gizmos::transform_gizmo::TransformGizmoSettings>,
     focused_entities: Query<Entity, With<bevy::gizmos::transform_gizmo::TransformGizmoFocus>>,
     mut commands: Commands,
 ) {
+    // If gizmos are disabled globally, remove focus to hide handles
+    if !gizmo_settings.show_gizmos {
+        for e in &focused_entities {
+            commands.entity(e).remove::<bevy::gizmos::transform_gizmo::TransformGizmoFocus>();
+        }
+        return;
+    }
+
     // 1. Sync manipulation mode with active tool (Translate, Rotate, Scale)
     settings.mode = match active_tool.current_id {
         "translate" => bevy::gizmos::transform_gizmo::TransformGizmoMode::Translate,
@@ -121,86 +180,133 @@ pub fn sync_selection_and_tools_to_gizmo(
     }
 }
 
-/// Renders a 3D AABB bounding box, glowing cyan base ring, and coordinate axes on the selected object.
+/// Recursively computes the combined world-space Axis-Aligned Bounding Box (AABB)
+/// enclosing an entity and all its descendant meshes (e.g. glTF scenes).
+/// Returns `Some((world_center, world_size))` if any mesh bounds are found, or `None` if non-spatial.
+pub fn compute_entity_world_aabb(
+    root: Entity,
+    transforms: &Query<&GlobalTransform>,
+    aabbs: &Query<&bevy::camera::primitives::Aabb>,
+    mesh_handles: &Query<&Mesh3d>,
+    meshes: &Assets<Mesh>,
+    children_query: &Query<&Children>,
+) -> Option<(Vec3, Vec3)> {
+    let mut min_pt = Vec3::splat(f32::INFINITY);
+    let mut max_pt = Vec3::splat(f32::NEG_INFINITY);
+    let mut found = false;
+
+    let mut stack = vec![root];
+    while let Some(ent) = stack.pop() {
+        if let Ok(gt) = transforms.get(ent) {
+            // Check direct Aabb component first
+            if let Ok(aabb) = aabbs.get(ent) {
+                let center: Vec3 = aabb.center.into();
+                let half: Vec3 = aabb.half_extents.into();
+                for dx in [-half.x, half.x] {
+                    for dy in [-half.y, half.y] {
+                        for dz in [-half.z, half.z] {
+                            let local_corner = center + Vec3::new(dx, dy, dz);
+                            let world_corner = gt.transform_point(local_corner);
+                            min_pt = min_pt.min(world_corner);
+                            max_pt = max_pt.max(world_corner);
+                            found = true;
+                        }
+                    }
+                }
+            } else if let Ok(mesh_handle) = mesh_handles.get(ent) {
+                // If Aabb component is not yet attached, compute from the Mesh asset
+                use bevy::camera::primitives::MeshAabb;
+                if let Some(mesh) = meshes.get(&mesh_handle.0) {
+                    if let Some(aabb) = mesh.get_aabb() {
+                        let center: Vec3 = aabb.center.into();
+                        let half: Vec3 = aabb.half_extents.into();
+                        for dx in [-half.x, half.x] {
+                            for dy in [-half.y, half.y] {
+                                for dz in [-half.z, half.z] {
+                                    let local_corner = center + Vec3::new(dx, dy, dz);
+                                    let world_corner = gt.transform_point(local_corner);
+                                    min_pt = min_pt.min(world_corner);
+                                    max_pt = max_pt.max(world_corner);
+                                    found = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Ok(children) = children_query.get(ent) {
+            for child in children.iter() {
+                stack.push(child);
+            }
+        }
+    }
+
+    if found {
+        let center = (min_pt + max_pt) * 0.5;
+        let size = (max_pt - min_pt).max(Vec3::splat(0.05));
+        Some((center, size))
+    } else {
+        None
+    }
+}
+
+/// Renders a true 3D AABB bounding box, glowing cyan base ring, and coordinate axes on the selected object.
 pub fn draw_selection_gizmo(
     inspector_sel: Res<InspectorSelection>,
     transforms: Query<&GlobalTransform>,
     aabbs: Query<&bevy::camera::primitives::Aabb>,
-    active_tool: Res<crate::core::tools::ActiveTool>,
+    mesh_handles: Query<&Mesh3d>,
+    meshes: Res<Assets<Mesh>>,
+    children_query: Query<&Children>,
+    gizmo_settings: Res<ViewportGizmoSettings>,
     mut gizmos: Gizmos,
 ) {
     let Some(selected) = inspector_sel.0 else { return };
     let Ok(gt) = transforms.get(selected) else { return };
     let pos = gt.translation();
 
-    // 1. Draw 3D AABB bounding box or fallback bounding wireframe
-    if let Ok(aabb) = aabbs.get(selected) {
-        let center = gt.transform_point(aabb.center.into());
-        let half_extents = aabb.half_extents;
-        let scale = gt.to_scale_rotation_translation().0;
-        let cuboid = Cuboid::new(
-            half_extents.x * scale.x * 2.0,
-            half_extents.y * scale.y * 2.0,
-            half_extents.z * scale.z * 2.0,
-        );
-
-        gizmos.primitive_3d(
-            &cuboid,
-            Isometry3d::new(center, gt.to_scale_rotation_translation().1),
-            Color::srgba(0.0, 0.95, 1.0, 0.65),
-        );
-    } else {
-        // Fallback wireframe box around transform origin
-        let cuboid = Cuboid::new(1.6, 1.6, 1.6);
-        gizmos.primitive_3d(
-            &cuboid,
-            Isometry3d::new(pos + Vec3::new(0.0, 0.75, 0.0), gt.to_scale_rotation_translation().1),
-            Color::srgba(0.0, 0.95, 1.0, 0.45),
-        );
+    // 1. Draw 3D AABB bounding box calculated from actual mesh bounds across the entity hierarchy
+    if gizmo_settings.show_bounds {
+        if let Some((world_center, world_size)) = compute_entity_world_aabb(
+            selected,
+            &transforms,
+            &aabbs,
+            &mesh_handles,
+            &meshes,
+            &children_query,
+        ) {
+            let cuboid = Cuboid::new(world_size.x, world_size.y, world_size.z);
+            gizmos.primitive_3d(
+                &cuboid,
+                Isometry3d::new(world_center, Quat::IDENTITY),
+                Color::srgba(0.0, 0.95, 1.0, 0.70),
+            );
+        }
     }
 
-    // 2. Radiant electric cyan selection ring flat on the ground
-    gizmos.circle(
-        Isometry3d::new(
-            pos + Vec3::new(0.0, 0.05, 0.0),
-            Quat::from_rotation_x(std::f32::consts::FRAC_PI_2),
-        ),
-        1.25,
-        Color::srgb(0.0, 0.95, 1.0),
-    );
-
-    // 3. Coordinate axis arrows (Red = X, Green = Y, Blue = Z) indicating transform orientation
-    let axis_len = 1.4;
-    let rot = gt.to_scale_rotation_translation().1;
-    let x_axis = rot * Vec3::X * axis_len;
-    let y_axis = rot * Vec3::Y * axis_len;
-    let z_axis = rot * Vec3::Z * axis_len;
-
-    gizmos.arrow(pos, pos + x_axis, Color::srgb(0.95, 0.25, 0.25));
-    gizmos.arrow(pos, pos + y_axis, Color::srgb(0.25, 0.85, 0.35));
-    gizmos.arrow(pos, pos + z_axis, Color::srgb(0.25, 0.65, 0.98));
-
-    // 4. Mode-specific gizmo overlays
-    if active_tool.current_id == "rotate" {
-        // Draw 3-axis rotation rings (Radius 1.35)
-        let ring_radius = 1.35;
-        // Pitch (X-axis ring - Red)
+    // 2. Transform Gizmo orientation overlays
+    if gizmo_settings.show_gizmos {
+        // Radiant electric cyan selection ring flat on the ground
         gizmos.circle(
-            Isometry3d::new(pos, rot * Quat::from_rotation_y(core::f32::consts::FRAC_PI_2)),
-            ring_radius,
-            Color::srgb(0.95, 0.25, 0.25),
+            Isometry3d::new(
+                pos + Vec3::new(0.0, 0.05, 0.0),
+                Quat::from_rotation_x(std::f32::consts::FRAC_PI_2),
+            ),
+            1.25,
+            Color::srgb(0.0, 0.95, 1.0),
         );
-        // Yaw (Y-axis ring - Green)
-        gizmos.circle(
-            Isometry3d::new(pos, rot * Quat::from_rotation_x(core::f32::consts::FRAC_PI_2)),
-            ring_radius,
-            Color::srgb(0.25, 0.85, 0.35),
-        );
-        // Roll (Z-axis ring - Blue)
-        gizmos.circle(
-            Isometry3d::new(pos, rot),
-            ring_radius,
-            Color::srgb(0.25, 0.65, 0.98),
-        );
+
+        // Coordinate axis arrows (Red = X, Green = Y, Blue = Z) indicating transform orientation
+        let axis_len = 1.4;
+        let rot = gt.to_scale_rotation_translation().1;
+        let x_axis = rot * Vec3::X * axis_len;
+        let y_axis = rot * Vec3::Y * axis_len;
+        let z_axis = rot * Vec3::Z * axis_len;
+
+        gizmos.arrow(pos, pos + x_axis, Color::srgb(0.95, 0.25, 0.25));
+        gizmos.arrow(pos, pos + y_axis, Color::srgb(0.25, 0.85, 0.35));
+        gizmos.arrow(pos, pos + z_axis, Color::srgb(0.25, 0.65, 0.98));
     }
 }
