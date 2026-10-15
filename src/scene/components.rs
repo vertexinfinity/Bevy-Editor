@@ -388,7 +388,7 @@ fn simulate_player_movement(
 fn simulate_follow_camera(
     time: Res<Time>,
     play_state: Option<Res<PlayState>>,
-    player_query: Query<&Transform, (Or<(With<PlayerController>, With<GameplayTag>)>, Without<FollowCamera>, Without<crate::camera::EditorCamera>)>,
+    player_query: Query<&Transform, (Or<(With<PlayerController>, With<GameplayTag>)>, Without<Camera>)>,
     mut camera_query: Query<(&mut Transform, Option<&FollowCamera>), (With<Camera>, Without<PlayerController>)>,
 ) {
     if let Some(state) = play_state {
@@ -399,7 +399,7 @@ fn simulate_follow_camera(
         return;
     }
 
-    let Ok(player_trans) = player_query.single() else {
+    let Some(player_trans) = player_query.iter().next() else {
         return;
     };
 
