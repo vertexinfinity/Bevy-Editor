@@ -689,20 +689,26 @@ fn spawn_user_project_card(commands: &mut Commands, parent: Entity, item: &UserP
                   mut active_project: ResMut<ActiveProject>,
                   mut registry: ResMut<ProjectRegistry>,
                   mut commands: Commands,
-                  asset_server: Res<AssetServer>| {
+                  asset_server: Res<AssetServer>,
+                  existing_scene_entities: Query<Entity, With<crate::scene::SceneEntity>>| {
                 if click.button == PointerButton::Primary {
                     let p = PathBuf::from(&project_path);
                     if p.join("Cargo.toml").is_file() {
                         registry.add_or_update(&p, &project_name, "User Project");
                         active_project.set_project_dir(p.clone());
 
+                        // Clear any existing entities so they don't stack up
+                        for ent in &existing_scene_entities {
+                            commands.entity(ent).despawn();
+                        }
+
                         let default_scene =
                             p.join("assets").join("scenes").join("default_scene.bsn");
                         if default_scene.is_file() {
                             let scene_path_str = default_scene.to_string_lossy().to_string();
+                            // Do NOT tag the DynamicWorldRoot root entity with SceneEntity to prevent recursion
                             commands.spawn((
-                                crate::scene::SceneEntity,
-                                Name::new("Default Scene"),
+                                Name::new("Scene Root"),
                                 bevy::world_serialization::DynamicWorldRoot(
                                     asset_server.load(scene_path_str),
                                 ),

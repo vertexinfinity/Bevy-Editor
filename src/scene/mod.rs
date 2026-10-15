@@ -35,6 +35,26 @@ impl Plugin for SceneManagerPlugin {
                 serialization::SceneSerializationPlugin,
                 drag_drop::DragDropPlugin,
             ))
-            .add_systems(Startup, primitives::spawn_starter_scene);
+            .add_systems(Startup, primitives::spawn_starter_scene)
+            .add_systems(Update, enforce_directional_light_limits);
+    }
+}
+
+/// Enforces safe directional light limits to prevent shadow map cascade overflow and GPU DeviceLost errors.
+pub fn enforce_directional_light_limits(
+    mut commands: Commands,
+    mut dir_lights: Query<(Entity, &mut DirectionalLight, Option<&Name>)>,
+) {
+    let mut sun_count = 0;
+    for (entity, mut light, name) in &mut dir_lights {
+        sun_count += 1;
+        if sun_count > 4 {
+            // Despawn excessive duplicate sun lights created by recursive scene loading or stacking
+            warn!("Despawning excessive duplicate directional light {:?} ({:?}) to protect GPU driver.", entity, name);
+            commands.entity(entity).despawn();
+        } else if sun_count > 1 {
+            // Keep at most 1 shadow-casting directional light to protect shadow map cascade textures
+            light.shadow_maps_enabled = false;
+        }
     }
 }

@@ -76,7 +76,7 @@ pub fn handle_play_mode_actions(world: &mut World) {
                         let dynamic_world = {
                             let type_registry = world.resource::<AppTypeRegistry>().read();
                             let scene_entities: Vec<Entity> = if let Some(mut state) =
-                                bevy::ecs::query::QueryState::<Entity, (With<SceneEntity>, Without<EditorInternal>)>::try_new(world)
+                                bevy::ecs::query::QueryState::<Entity, (With<SceneEntity>, Without<EditorInternal>, Without<bevy::world_serialization::DynamicWorldRoot>)>::try_new(world)
                             {
                                 state.iter(world).collect()
                             } else {
@@ -85,6 +85,8 @@ pub fn handle_play_mode_actions(world: &mut World) {
 
                             bevy::world_serialization::DynamicWorldBuilder::from_world(world, &type_registry)
                                 .deny_component::<EditorInternal>()
+                                .deny_component::<SceneEntity>()
+                                .deny_component::<bevy::world_serialization::DynamicWorldRoot>()
                                 .deny_component::<bevy::camera::visibility::VisibilityClass>()
                                 .deny_component::<bevy::camera::visibility::ViewVisibility>()
                                 .extract_entities(scene_entities.into_iter())
