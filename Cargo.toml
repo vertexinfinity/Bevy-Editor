@@ -4,17 +4,16 @@ version = "0.1.0"
 edition = "2024"
 description = "A minimal, modular, extensible Bevy Scene Editor & Multi-Platform Exporter"
 
+default-run = "bevylite"
+
 [lib]
 name = "bevy_editor_lib"
 path = "src/lib.rs"
 
 [[bin]]
-name = "bevy_editor"
+name = "bevylite"
 path = "src/main.rs"
 
-[[bin]]
-name = "bevylite"
-path = "src/bin/bevylite.rs"
 
 [features]
 default = ["feathers", "gltf", "gizmos"]
@@ -37,6 +36,9 @@ dynamic_linking = ["bevy/dynamic_linking"]
 
 [dependencies]
 bevy = { git = "https://github.com/bevyengine/bevy", branch = "main", default-features = false, features = [
+    "multi_threaded",
+    "async_executor",
+    "std",
     "bevy_core_pipeline",
     "bevy_pbr",
     "bevy_render",

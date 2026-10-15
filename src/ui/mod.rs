@@ -29,31 +29,13 @@ fn setup_editor_fonts(
 
     let mut font_sources = Vec::new();
 
-    #[cfg(windows)]
-    {
-        font_sources.push(bevy::text::FontSource::Family("Segoe UI".into()));
-        font_sources.push(bevy::text::FontSource::Family("Segoe UI Symbol".into()));
-        font_sources.push(bevy::text::FontSource::Family("Segoe UI Emoji".into()));
-    }
-    #[cfg(target_os = "linux")]
-    {
-        font_sources.push(bevy::text::FontSource::Family("Ubuntu".into()));
-        font_sources.push(bevy::text::FontSource::Family("DejaVu Sans".into()));
-        font_sources.push(bevy::text::FontSource::Family("Noto Color Emoji".into()));
-    }
-    #[cfg(target_os = "macos")]
-    {
-        font_sources.push(bevy::text::FontSource::Family("SF Pro".into()));
-        font_sources.push(bevy::text::FontSource::Family("Apple Color Emoji".into()));
-    }
-
-    // Default font fallback (embedded FiraMono)
+    // 1. Primary: Instant embedded default font (FiraMono - 0ms memory load for all UI text)
     font_sources.push(bevy::text::FontSource::Default);
 
-    // Lucide icon font glyphs
+    // 2. Lucide icon font glyphs
     font_sources.push(bevy::text::FontSource::Handle(lucide_handle.clone()));
 
-    // Local optional font file overrides if present in assets/
+    // 3. Local optional font file overrides if present in assets/
     if std::path::Path::new("assets/fonts/seguisym.ttf").exists() {
         let handle = asset_server.load("fonts/seguisym.ttf");
         font_sources.push(bevy::text::FontSource::Handle(handle));
@@ -61,6 +43,22 @@ fn setup_editor_fonts(
     if std::path::Path::new("assets/fonts/seguiemj.ttf").exists() {
         let handle = asset_server.load("fonts/seguiemj.ttf");
         font_sources.push(bevy::text::FontSource::Handle(handle));
+    }
+
+    // 4. System font fallbacks (queried strictly for characters missing from Default + Lucide)
+    #[cfg(windows)]
+    {
+        font_sources.push(bevy::text::FontSource::Family("Segoe UI".into()));
+        font_sources.push(bevy::text::FontSource::Family("Segoe UI Symbol".into()));
+    }
+    #[cfg(target_os = "linux")]
+    {
+        font_sources.push(bevy::text::FontSource::Family("Ubuntu".into()));
+        font_sources.push(bevy::text::FontSource::Family("DejaVu Sans".into()));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        font_sources.push(bevy::text::FontSource::Family("SF Pro".into()));
     }
 
     default_font_source.0 = bevy::text::FontSource::List(font_sources);

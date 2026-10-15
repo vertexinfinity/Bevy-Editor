@@ -2,6 +2,7 @@
 
 pub mod assets;
 pub mod camera;
+pub mod cli;
 pub mod core;
 pub mod export;
 pub mod plugins;
@@ -9,6 +10,7 @@ pub mod project;
 pub mod remote;
 pub mod scene;
 pub mod ui;
+
 
 use bevy::{
     asset::UnapprovedPathMode,

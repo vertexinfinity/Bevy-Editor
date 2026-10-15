@@ -1789,10 +1789,12 @@ name = "bevy_tasks"
 version = "0.20.0-dev"
 source = "git+https://github.com/bevyengine/bevy?branch=main#c8d199b192a1b173746f7a160d259c4db8ab7789"
 dependencies = [
+ "async-channel",
  "async-executor",
  "async-task",
  "atomic-waker",
  "bevy_platform",
+ "concurrent-queue",
  "crossbeam-queue",
  "derive_more",
  "futures-lite",

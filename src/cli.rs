@@ -8,21 +8,28 @@ use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 use serde_json::{json, Value};
-use bevy_editor_lib::export::{ExportContext, Exporter};
+use crate::export::{ExportContext, Exporter};
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
-
-    if args.len() < 2 {
+/// Dispatches command line arguments to the appropriate headless or console handler.
+pub fn dispatch(args: &[String]) {
+    if args.is_empty() {
         print_help();
         return;
     }
 
-    match args[1].as_str() {
-        "new" => handle_new(&args[2..]),
-        "open" => handle_open(&args[2..]),
-        "build" | "export" => handle_build(&args[2..]),
-        "scene" => handle_scene(&args[2..]),
+    match args[0].as_str() {
+        // Console / Headless flags
+        "-c" | "--console" | "--headless" | "headless" => {
+            if args.len() == 1 {
+                run_console_status();
+            } else {
+                dispatch(&args[1..]);
+            }
+        }
+        "new" => handle_new(&args[1..]),
+        "open" | "--gui" | "gui" => handle_open(&args[1..]),
+        "build" | "export" => handle_build(&args[1..]),
+        "scene" => handle_scene(&args[1..]),
         "tools" => handle_tools(),
         "mcp" => handle_mcp(),
         "--version" | "-v" | "version" => {
@@ -36,34 +43,58 @@ fn main() {
     }
 }
 
-fn print_help() {
+/// Prints a quick status banner and available commands for interactive console sessions.
+pub fn run_console_status() {
+    println!(r#"
+◈ BEVYLITE CONSOLE MODE
+Version:      v0.1.0 (Bevy 0.20-dev | Pure Rust)
+Status:       Headless Engine Services Ready
+
+Quick Commands:
+  • bevylite new <Name>              Create new Bevy game project
+  • bevylite build --target windows  Headlessly package game for Windows
+  • bevylite scene inspect <file>    Inspect .ron / .bsn scene entities
+  • bevylite mcp                     Start AI Model Context Protocol server
+  • bevylite open                    Launch 3D visual editor
+
+Run 'bevylite --help' for full command line documentation.
+"#);
+}
+
+pub fn print_help() {
     println!(r#"
 ◈ BEVYLITE CLI — Modern, Lightweight Game Engine Tooling
 
 USAGE:
-    bevylite <COMMAND> [OPTIONS]
+    bevylite [OPTIONS] [COMMAND]
+
+FLAGS:
+    (no args)                 Launch the Bevylite 3D visual editor
+    -c, --console             Run in headless console mode
+    --headless, headless      Run headlessly without window creation
+    -v, --version             Print version information
+    -h, --help                Print this help menu
 
 COMMANDS:
+    open [PATH]               Launch the visual editor (opens path if specified)
     new <PROJECT_NAME>        Scaffold a clean, standalone Bevy game project
-    open [PATH]               Launch the Bevylite visual editor (opens path if specified)
     build --target <TARGET>   Headlessly build and export for a target platform
                               [targets: windows, linux, android, web, ios]
-    scene inspect <FILE>      Headlessly inspect a .ron / .bsn scene file
+    scene <ACTION>            Headless scene operations (create, inspect, move, add-comp)
     tools                     List all registered viewport editing tools
     mcp                       Start the Bevylite Model Context Protocol (MCP) server (stdio)
-    version, -v               Print version information
-    help, -h                  Print this help menu
 
 EXAMPLES:
-    bevylite new MyFirstGame
-    bevylite open
-    bevylite build --target android --output ./dist/android
+    bevylite                  # Launches 3D visual editor window
+    bevylite -c               # Prints console status and ready prompt
+    bevylite new MyFirstGame  # Headlessly scaffolds game project
+    bevylite build --target windows --output ./dist/win
     bevylite scene inspect ./assets/scenes/starter.ron
     bevylite mcp
 "#);
 }
 
-fn handle_new(args: &[String]) {
+pub fn handle_new(args: &[String]) {
     if args.is_empty() {
         eprintln!("Error: Missing project name. Usage: bevylite new <PROJECT_NAME> [--output <DIR>]");
         std::process::exit(1);
@@ -77,7 +108,7 @@ fn handle_new(args: &[String]) {
     };
 
     println!("Scaffolding Bevy game project '{}' into {:?}...", project_name, target_dir);
-    match bevy_editor_lib::project::ProjectScaffolder::create_project(&target_dir, project_name) {
+    match crate::project::ProjectScaffolder::create_project(&target_dir, project_name) {
         Ok(path) => {
             println!("Successfully created project at {:?}", path);
             println!("\nTo get started:");
@@ -91,16 +122,16 @@ fn handle_new(args: &[String]) {
     }
 }
 
-fn handle_open(args: &[String]) {
+pub fn handle_open(args: &[String]) {
     if !args.is_empty() {
         println!("Opening Bevylite Editor with path: {}", args[0]);
     } else {
         println!("Launching Bevylite Editor...");
     }
-    bevy_editor_lib::run_editor();
+    crate::run_editor();
 }
 
-fn handle_build(args: &[String]) {
+pub fn handle_build(args: &[String]) {
     let mut target = "windows".to_string();
     let mut output_dir = PathBuf::from("./dist");
     let mut project_dir = None;
@@ -143,23 +174,23 @@ fn handle_build(args: &[String]) {
 
     let result = match target.as_str() {
         "android" => {
-            let exporter = bevy_editor_lib::export::android::AndroidExporter;
+            let exporter = crate::export::android::AndroidExporter;
             exporter.export(&config)
         }
         "windows" => {
-            let exporter = bevy_editor_lib::export::windows::WindowsExporter;
+            let exporter = crate::export::windows::WindowsExporter;
             exporter.export(&config)
         }
         "linux" => {
-            let exporter = bevy_editor_lib::export::linux::LinuxExporter;
+            let exporter = crate::export::linux::LinuxExporter;
             exporter.export(&config)
         }
         "web" => {
-            let exporter = bevy_editor_lib::export::web::WebExporter;
+            let exporter = crate::export::web::WebExporter;
             exporter.export(&config)
         }
         "ios" => {
-            let exporter = bevy_editor_lib::export::ios::IosExporter;
+            let exporter = crate::export::ios::IosExporter;
             exporter.export(&config)
         }
         other => {
@@ -181,7 +212,7 @@ fn handle_build(args: &[String]) {
     }
 }
 
-fn handle_scene(args: &[String]) {
+pub fn handle_scene(args: &[String]) {
     if args.is_empty() {
         eprintln!("Usage: bevylite scene <create|inspect|move|add-comp> [OPTIONS]");
         std::process::exit(1);
@@ -278,7 +309,7 @@ fn handle_scene(args: &[String]) {
     }
 }
 
-fn handle_tools() {
+pub fn handle_tools() {
     println!("Registered Bevylite Viewport Tools:");
     println!("  • [Q] Select Tool  (Marquee & Raycast Entity Selection)");
     println!("  • [W] Move Tool    (3-Axis Planar Translation Gizmo)");
@@ -287,7 +318,7 @@ fn handle_tools() {
 }
 
 /// Runs the Model Context Protocol (MCP) JSON-RPC server over stdio.
-fn handle_mcp() {
+pub fn handle_mcp() {
     let stdin = io::stdin();
     let mut stdout = io::stdout();
 
@@ -398,19 +429,19 @@ fn handle_mcp() {
                                         "file_path": { "type": "string", "description": "Path to the .ron scene file" },
                                         "entity_name": { "type": "string", "description": "Name of the entity to modify (e.g. 'Cube', 'Player Cube', 'Sun Light')" },
                                         "translation": {
-                                            "type": "array",
-                                            "items": { "type": "number" },
-                                            "description": "[x, y, z] position in 3D world space"
+                                             "type": "array",
+                                             "items": { "type": "number" },
+                                             "description": "[x, y, z] position in 3D world space"
                                         },
                                         "rotation": {
-                                            "type": "array",
-                                            "items": { "type": "number" },
-                                            "description": "[rx, ry, rz, rw] quaternion orientation"
+                                             "type": "array",
+                                             "items": { "type": "number" },
+                                             "description": "[rx, ry, rz, rw] quaternion orientation"
                                         },
                                         "scale": {
-                                            "type": "array",
-                                            "items": { "type": "number" },
-                                            "description": "[sx, sy, sz] 3D scale"
+                                             "type": "array",
+                                             "items": { "type": "number" },
+                                             "description": "[sx, sy, sz] 3D scale"
                                         }
                                     },
                                     "required": ["file_path", "entity_name"]
@@ -490,7 +521,7 @@ fn handle_mcp() {
                         let path = arguments.get("path").and_then(|p| p.as_str()).map(PathBuf::from)
                             .unwrap_or_else(|| env::current_dir().unwrap_or_default().join(name));
 
-                        match bevy_editor_lib::project::ProjectScaffolder::create_project(&path, name) {
+                        match crate::project::ProjectScaffolder::create_project(&path, name) {
                             Ok(p) => json!({
                                 "content": [{
                                     "type": "text",
@@ -596,11 +627,11 @@ fn handle_mcp() {
                         let kind_str = arguments.get("kind").and_then(|k| k.as_str()).unwrap_or("lua");
                         let dir_str = arguments.get("dir").and_then(|d| d.as_str()).unwrap_or("assets/scripts");
                         let kind = match kind_str {
-                            "rhai" => bevy_editor_lib::assets::AssetTemplateKind::RhaiScript,
-                            "rs" => bevy_editor_lib::assets::AssetTemplateKind::RustScript,
-                            _ => bevy_editor_lib::assets::AssetTemplateKind::LuaScript,
+                            "rhai" => crate::assets::AssetTemplateKind::RhaiScript,
+                            "rs" => crate::assets::AssetTemplateKind::RustScript,
+                            _ => crate::assets::AssetTemplateKind::LuaScript,
                         };
-                        match bevy_editor_lib::assets::AssetCreator::create_asset(Path::new(dir_str), name, kind) {
+                        match crate::assets::AssetCreator::create_asset(Path::new(dir_str), name, kind) {
                             Ok(path) => {
                                 log_mcp_bridge_event("create_script", name, &path.to_string_lossy());
                                 json!({
@@ -618,7 +649,7 @@ fn handle_mcp() {
                     }
                     "bevylite_open_editor" => {
                         let file = arguments.get("file_path").and_then(|f| f.as_str()).unwrap_or("");
-                        match bevy_editor_lib::assets::AssetCreator::open_in_system_editor(Path::new(file)) {
+                        match crate::assets::AssetCreator::open_in_system_editor(Path::new(file)) {
                             Ok(_) => json!({
                                 "content": [{
                                     "type": "text",
@@ -643,11 +674,11 @@ fn handle_mcp() {
                             release: true,
                         };
                         let res = match target {
-                            "android" => bevy_editor_lib::export::android::AndroidExporter.export(&config),
-                            "windows" => bevy_editor_lib::export::windows::WindowsExporter.export(&config),
-                            "linux" => bevy_editor_lib::export::linux::LinuxExporter.export(&config),
-                            "web" => bevy_editor_lib::export::web::WebExporter.export(&config),
-                            "ios" => bevy_editor_lib::export::ios::IosExporter.export(&config),
+                            "android" => crate::export::android::AndroidExporter.export(&config),
+                            "windows" => crate::export::windows::WindowsExporter.export(&config),
+                            "linux" => crate::export::linux::LinuxExporter.export(&config),
+                            "web" => crate::export::web::WebExporter.export(&config),
+                            "ios" => crate::export::ios::IosExporter.export(&config),
                             _ => Err("Invalid target".to_string()),
                         };
                         match res {
@@ -695,7 +726,7 @@ fn handle_mcp() {
 }
 
 /// Creates a Bevy .ron scene file from predefined presets.
-fn create_scene_ron(path: &Path, preset: &str) -> Result<String, String> {
+pub fn create_scene_ron(path: &Path, preset: &str) -> Result<String, String> {
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
@@ -802,7 +833,7 @@ fn create_scene_ron(path: &Path, preset: &str) -> Result<String, String> {
 }
 
 /// Parses and returns a detailed inspection report of a .ron scene file.
-fn inspect_scene_ron(path: &Path) -> Result<String, String> {
+pub fn inspect_scene_ron(path: &Path) -> Result<String, String> {
     if !path.exists() {
         return Err(format!("Scene file does not exist: {:?}", path));
     }
@@ -877,7 +908,7 @@ fn inspect_scene_ron(path: &Path) -> Result<String, String> {
 }
 
 /// Moves or rescales an entity's Transform component in a .ron scene file.
-fn move_component_in_scene(
+pub fn move_component_in_scene(
     path: &Path,
     entity_name: &str,
     translation: Option<[f32; 3]>,
@@ -948,7 +979,7 @@ fn move_component_in_scene(
 }
 
 /// Attaches a new component to an entity in a .ron scene file.
-fn add_component_to_scene(
+pub fn add_component_to_scene(
     path: &Path,
     entity_name: &str,
     component_type: &str,
@@ -994,7 +1025,7 @@ fn add_component_to_scene(
 }
 
 /// Logs an MCP event to `assets/.mcp_bridge.json` so the running editor displays live AI interaction.
-fn log_mcp_bridge_event(action: &str, entity: &str, details: &str) {
+pub fn log_mcp_bridge_event(action: &str, entity: &str, details: &str) {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
