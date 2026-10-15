@@ -25,21 +25,49 @@ fn setup_editor_fonts(
     asset_server: Res<AssetServer>,
     mut default_font_source: ResMut<bevy::text::DefaultFontSource>,
 ) {
-    let symbol_handle: Handle<Font> = asset_server.load("fonts/seguisym.ttf");
-    let emoji_handle: Handle<Font> = asset_server.load("fonts/seguiemj.ttf");
     let lucide_handle: Handle<Font> = asset_server.load("fonts/lucide.ttf");
 
-    // Configure the default font chain with Segoe UI Symbol & Emoji fallback
-    default_font_source.0 = bevy::text::FontSource::List(vec![
-        bevy::text::FontSource::Default,
-        bevy::text::FontSource::Handle(symbol_handle.clone()),
-        bevy::text::FontSource::Handle(emoji_handle.clone()),
-        bevy::text::FontSource::Handle(lucide_handle.clone()),
-    ]);
+    let mut font_sources = Vec::new();
+
+    #[cfg(windows)]
+    {
+        font_sources.push(bevy::text::FontSource::Family("Segoe UI".into()));
+        font_sources.push(bevy::text::FontSource::Family("Segoe UI Symbol".into()));
+        font_sources.push(bevy::text::FontSource::Family("Segoe UI Emoji".into()));
+    }
+    #[cfg(target_os = "linux")]
+    {
+        font_sources.push(bevy::text::FontSource::Family("Ubuntu".into()));
+        font_sources.push(bevy::text::FontSource::Family("DejaVu Sans".into()));
+        font_sources.push(bevy::text::FontSource::Family("Noto Color Emoji".into()));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        font_sources.push(bevy::text::FontSource::Family("SF Pro".into()));
+        font_sources.push(bevy::text::FontSource::Family("Apple Color Emoji".into()));
+    }
+
+    // Default font fallback (embedded FiraMono)
+    font_sources.push(bevy::text::FontSource::Default);
+
+    // Lucide icon font glyphs
+    font_sources.push(bevy::text::FontSource::Handle(lucide_handle.clone()));
+
+    // Local optional font file overrides if present in assets/
+    if std::path::Path::new("assets/fonts/seguisym.ttf").exists() {
+        let handle = asset_server.load("fonts/seguisym.ttf");
+        font_sources.push(bevy::text::FontSource::Handle(handle));
+    }
+    if std::path::Path::new("assets/fonts/seguiemj.ttf").exists() {
+        let handle = asset_server.load("fonts/seguiemj.ttf");
+        font_sources.push(bevy::text::FontSource::Handle(handle));
+    }
+
+    default_font_source.0 = bevy::text::FontSource::List(font_sources);
 
     commands.insert_resource(theme::EditorFonts {
-        symbol: symbol_handle,
-        emoji: emoji_handle,
+        symbol: Handle::default(),
+        emoji: Handle::default(),
         lucide: lucide_handle,
     });
 }

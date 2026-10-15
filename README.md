@@ -14,9 +14,10 @@ Built on Bevy's native UI system (`bevy_ui` + `bevy_feathers`), built-in camera 
 - **Drag-and-Drop 3D Models**: Uses Bevy's native [`FileDragAndDrop`](src/scene/drag_drop.rs). Drag any `.glb`, `.gltf`, or `.ron` file directly from Windows Explorer into the editor window to spawn it immediately.
 - **Dynamic Scene Management**: Author, modify, save, and reload scenes (`.ron` / `.bsn`) via [`DynamicWorld`](src/scene/save_load.rs).
 - **Extensible Multi-Platform Exporter**: Pluggable [`Exporter`](src/export/mod.rs) architecture:
-  - 🤖 **Android**: Direct `cargo-apk` build or turnkey Gradle project scaffolding (via Bevy's official mobile integration).
   - 🪟 **Windows**: Standalone optimized executable packaging with bundled assets.
+  - 🐧 **Linux**: Standalone ELF executable build with asset bundling.
   - 🌐 **Web**: WebAssembly (WASM) / HTML5 canvas deployment.
+  - 🤖 **Android**: Direct `cargo-apk` build or turnkey Gradle project scaffolding (via Bevy's official mobile integration).
   - 🍎 **iOS**: Xcode project scaffolding for App Store / test flight deployment.
 
 ---
@@ -49,14 +50,24 @@ src/
 └── export/            # Multi-target export engine
     ├── mod.rs         # Exporter trait & ExportRegistry
     ├── android.rs     # Android APK & Gradle scaffolding
-    ├── windows.rs     # Windows desktop packaging
+    ├── ios.rs         # iOS Xcode scaffolding
+    ├── linux.rs       # Linux desktop packaging
     ├── web.rs         # WebAssembly bundle generation
-    └── ios.rs         # iOS Xcode scaffolding
+    └── windows.rs     # Windows desktop packaging
 ```
 
 ---
 
-## Controls
+## Build Profiles (Bevylite Tiers)
+
+Users can select how lightweight they want the editor depending on workflow and compile constraints:
+
+| Profile | Command | Included Features |
+| :--- | :--- | :--- |
+| **⚡ Minimal Lite** | `cargo run --no-default-features --features lite` | Bare minimum 3D scene viewer, camera controller, basic primitives |
+| **◈ Standard (Default)** | `cargo run` | Feathers dark UI, Scene Hierarchy, Inspector, 3D Transform Gizmos, glTF |
+| **🚀 Fast Dev Iteration** | `cargo run --features dynamic_linking` | Shared dynamic engine linking (~1.5s re-links during development) |
+| **🛠️ Pro / Full** | `cargo run --features "remote,compressed_textures,solari"` | JSON-RPC MCP server, KTX2/DDS compression, Solari real-time ray tracing |
 
 | Input | Action |
 | :--- | :--- |

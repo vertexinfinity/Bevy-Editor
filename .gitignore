@@ -8,4 +8,5 @@ temp_mcp_game/
 .amazonq/
 test_mcp_client.mjs
 screenshots/
-
+assets/fonts/seguiemj.ttf
+assets/fonts/seguisym.ttf

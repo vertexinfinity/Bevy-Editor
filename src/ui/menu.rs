@@ -31,6 +31,7 @@ pub enum MenuAction {
     ToggleBuildMenu,
     BuildAndroid,
     BuildWindows,
+    BuildLinux,
     BuildWeb,
     BuildIos,
 }
@@ -431,6 +432,7 @@ pub fn spawn_menu_bar(mut commands: Commands, current_ws: Res<ActiveWorkspace>) 
 
     for (label, action) in [
         ("Windows", MenuAction::BuildWindows),
+        ("Linux", MenuAction::BuildLinux),
         ("Android", MenuAction::BuildAndroid),
         ("Web", MenuAction::BuildWeb),
         ("iOS", MenuAction::BuildIos),
@@ -915,6 +917,9 @@ fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>) {{
             }
             MenuAction::BuildWindows => {
                 trigger_export(world, "windows");
+            }
+            MenuAction::BuildLinux => {
+                trigger_export(world, "linux");
             }
             MenuAction::BuildWeb => {
                 trigger_export(world, "web");

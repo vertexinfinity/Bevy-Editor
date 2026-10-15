@@ -1,7 +1,8 @@
-﻿//! Extensible multi-platform export engine for Bevy-Editor.
+//! Extensible multi-platform export engine for Bevy-Editor.
 
 pub mod android;
 pub mod ios;
+pub mod linux;
 pub mod web;
 pub mod windows;
 
@@ -103,6 +104,7 @@ impl Plugin for ExportPlugin {
         let mut registry = ExportRegistry::default();
         registry.register(android::AndroidExporter::default());
         registry.register(windows::WindowsExporter::default());
+        registry.register(linux::LinuxExporter::default());
         registry.register(web::WebExporter::default());
         registry.register(ios::IosExporter::default());
 
