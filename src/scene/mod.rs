@@ -25,6 +25,11 @@ impl Plugin for SceneManagerPlugin {
         app.init_resource::<CurrentScene>()
             .register_type::<EditorInternal>()
             .register_type::<SceneEntity>()
+            .register_type::<Transform>()
+            .register_type::<GlobalTransform>()
+            .register_type::<Visibility>()
+            .register_type::<InheritedVisibility>()
+            .register_type::<ViewVisibility>()
             .add_plugins((
                 components::AuthorableComponentsPlugin,
                 serialization::SceneSerializationPlugin,
