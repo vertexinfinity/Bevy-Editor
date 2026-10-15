@@ -64,5 +64,19 @@ pub fn run_editor() {
             export::ExportPlugin,
             remote::EditorRemotePlugin::default(),
         ))
+        .insert_resource(bevy::render::error_handler::RenderErrorHandler(|error, main_world, _| {
+            if error.description.contains("Surface::configure")
+                || error.description.contains("Invalid surface")
+                || error.description.contains("ResizeBuffers")
+                || error.description.contains("window is in use")
+            {
+                warn!("Recovered from transient swapchain surface resize/configure error: {}", error.description);
+                bevy::render::error_handler::RenderErrorPolicy::Ignore
+            } else {
+                error!("Quitting the application due to {:?} RenderError: {}", error.ty, error.description);
+                main_world.write_message(bevy::app::AppExit::error());
+                bevy::render::error_handler::RenderErrorPolicy::StopRendering
+            }
+        }))
         .run();
 }

@@ -81,6 +81,8 @@ pub enum SpawnPrimitiveKind {
     Plane,
     Capsule,
     Torus,
+    // Cameras
+    Camera3d,
     // Light Sources
     Light,
     PointLight,
@@ -359,6 +361,10 @@ pub fn spawn_hierarchy_panel(mut commands: Commands) {
     spawn_hierarchy_menu_item(&mut commands, add_menu, "Capsule", SpawnPrimitiveKind::Capsule);
     spawn_hierarchy_menu_item(&mut commands, add_menu, "Torus", SpawnPrimitiveKind::Torus);
 
+    // Cameras
+    spawn_hierarchy_menu_section(&mut commands, add_menu, "CAMERAS");
+    spawn_hierarchy_menu_item(&mut commands, add_menu, "📷 3D Camera", SpawnPrimitiveKind::Camera3d);
+
     // Light Sources
     spawn_hierarchy_menu_section(&mut commands, add_menu, "LIGHT SOURCES");
     spawn_hierarchy_menu_item(&mut commands, add_menu, "Sun (Directional)", SpawnPrimitiveKind::DirectionalLight);
@@ -594,6 +600,7 @@ pub fn update_hierarchy_list(
         Option<&crate::scene::components::GameplayTag>,
         Option<&Visibility>,
         Option<&ChildOf>,
+        Option<&Camera3d>,
     ), With<SceneEntity>>,
     scene_entities: Query<(), With<SceneEntity>>,
     selection: Res<InspectorSelection>,
@@ -636,7 +643,7 @@ pub fn update_hierarchy_list(
     // Classify entities into categories - only show root level entities to prevent lag
     let mut items: Vec<(HierarchyCategory, Entity, String, &'static str, bool, bool)> = Vec::new();
 
-    for (entity, name, dir_light, point_light, mesh, script, gameplay_tag, vis, child_of) in &entities_query {
+    for (entity, name, dir_light, point_light, mesh, script, gameplay_tag, vis, child_of, camera) in &entities_query {
         // Skip child entities if parent is also a SceneEntity (keep collapsed to root)
         if let Some(child) = child_of {
             if scene_entities.contains(child.parent()) {
@@ -648,7 +655,9 @@ pub fn update_hierarchy_list(
         let name_str = name.map(|n| n.as_str()).unwrap_or("Entity").to_string();
         let is_selected = selection.0 == Some(entity);
 
-        let (category, icon) = if dir_light.is_some() || name_str.contains("Ground") || name_str.contains("Sky") {
+        let (category, icon) = if camera.is_some() || name_str.to_lowercase().contains("camera") {
+            (HierarchyCategory::Gameplay, "📷")
+        } else if dir_light.is_some() || name_str.contains("Ground") || name_str.contains("Sky") {
             (HierarchyCategory::Environment, "💡")
         } else if point_light.is_some() {
             (HierarchyCategory::Environment, "💡")
@@ -1218,6 +1227,24 @@ pub fn handle_spawn_primitives(
 
                 world.resource_mut::<InspectorSelection>().0 = Some(entity);
                 info!("Spawned UI Panel: {:?}", entity);
+            }
+            SpawnPrimitiveKind::Camera3d => {
+                let entity = world
+                    .spawn((
+                        SceneEntity,
+                        Name::new("3D Camera"),
+                        Camera3d::default(),
+                        Camera {
+                            // Keep inactive in editor so viewport stays driven by editor fly camera
+                            is_active: false,
+                            ..default()
+                        },
+                        Transform::from_xyz(0.0, 5.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
+                    ))
+                    .id();
+
+                world.resource_mut::<InspectorSelection>().0 = Some(entity);
+                info!("Spawned primitive 3D Camera: {:?}", entity);
             }
             SpawnPrimitiveKind::Empty => {
                 let entity = world

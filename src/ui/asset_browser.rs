@@ -872,6 +872,38 @@ pub fn handle_spawn_asset_messages(
 
         match ext.as_str() {
             "glb" | "gltf" => {
+                if ext == "gltf" {
+                    let gltf_path = std::path::Path::new("assets").join(&clean_path);
+                    if let Ok(content) = std::fs::read_to_string(&gltf_path) {
+                        if content.contains("\"uri\": \"") && content.contains(".bin\"") {
+                            let parent = gltf_path.parent().unwrap_or(std::path::Path::new("assets"));
+                            let mut missing_file = None;
+                            for line in content.lines() {
+                                if line.contains("\"uri\": \"") && line.contains(".bin\"") {
+                                    if let Some(start) = line.find("\"uri\": \"") {
+                                        let rest = &line[start + 8..];
+                                        if let Some(end) = rest.find('\"') {
+                                            let bin_name = &rest[..end];
+                                            if !parent.join(bin_name).exists() {
+                                                missing_file = Some(bin_name.to_string());
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if let Some(bin_name) = missing_file {
+                                warn!("Cannot spawn glTF '{}': missing required companion buffer '{}'", clean_path, bin_name);
+                                *export_status = ExportStatus::Failed {
+                                    target: "Explorer".to_string(),
+                                    error: format!("Missing {bin_name} for {}", item.file_name),
+                                };
+                                continue;
+                            }
+                        }
+                    }
+                }
+
                 info!("Spawning model from Explorer: {}", clean_path);
                 commands.spawn((
                     crate::scene::SceneEntity,
