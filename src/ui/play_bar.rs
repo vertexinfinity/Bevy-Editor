@@ -44,8 +44,8 @@ pub fn spawn_play_controls(commands: &mut Commands, parent: Entity) -> Entity {
     spawn_play_button(commands, bar_root, "⏹", PlayModeAction::Stop, PlayBtnType::Stop);
     // Step Button
     spawn_play_button(commands, bar_root, "⏭", PlayModeAction::Step, PlayBtnType::Normal);
-    // Pop-out Window Button
-    spawn_play_button(commands, bar_root, "⧉ Window", PlayModeAction::PlayInWindow, PlayBtnType::Normal);
+    // Standalone App Runner Button (Cargo)
+    spawn_play_button(commands, bar_root, "📦 Run App (Cargo)", PlayModeAction::PlayInWindow, PlayBtnType::Normal);
 
     bar_root
 }

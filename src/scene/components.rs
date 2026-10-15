@@ -258,6 +258,7 @@ impl Plugin for AuthorableComponentsPlugin {
                     handle_ui_button_interactions,
                     simulate_player_movement,
                     simulate_follow_camera,
+                    simulate_fps_controller,
                     simulate_orbit_camera,
                     simulate_rts_camera,
                 ),
@@ -332,7 +333,7 @@ fn simulate_player_movement(
     time: Res<Time>,
     play_state: Option<Res<PlayState>>,
     keys: Res<ButtonInput<KeyCode>>,
-    mut query: Query<(&mut Transform, Option<&PlayerController>, Option<&Name>, Option<&GameplayTag>)>,
+    mut query: Query<(&mut Transform, Option<&PlayerController>, Option<&Name>, Option<&GameplayTag>, Option<&ScriptComponent>), Without<Camera>>,
 ) {
     if let Some(state) = play_state {
         if *state != PlayState::Playing {
@@ -343,7 +344,7 @@ fn simulate_player_movement(
     }
 
     let dt = time.delta_secs();
-    for (mut transform, player_ctrl, name, tag) in &mut query {
+    for (mut transform, player_ctrl, name, tag, script) in &mut query {
         let is_player = player_ctrl.is_some()
             || name.map_or(false, |n| n.as_str().to_lowercase().contains("player") || n.as_str().to_lowercase().contains("hero"))
             || tag.map_or(false, |t| t.tag.to_lowercase().contains("player"));
@@ -352,7 +353,13 @@ fn simulate_player_movement(
             continue;
         }
 
-        let speed = player_ctrl.map_or(8.0, |p| p.speed);
+        let speed = script
+            .and_then(|s| s.properties.get("move_speed"))
+            .and_then(|val| match val {
+                ScriptPropertyVal::Float(f) => Some(*f),
+                _ => None,
+            })
+            .unwrap_or_else(|| player_ctrl.map_or(8.0, |p| p.speed));
         let mut move_dir = Vec3::ZERO;
 
         if keys.pressed(KeyCode::KeyW) || keys.pressed(KeyCode::ArrowUp) {
@@ -411,6 +418,67 @@ fn simulate_follow_camera(
         let desired_pos = target_pos + offset;
         cam_trans.translation = cam_trans.translation.lerp(desired_pos, (smooth_speed * dt).min(1.0));
         cam_trans.look_at(target_pos + Vec3::Y * 0.8, Vec3::Y);
+    }
+}
+
+/// Simulates first-person camera movement (WASD) and mouse look (pitch/yaw) during in-viewport Play mode.
+fn simulate_fps_controller(
+    time: Res<Time>,
+    play_state: Option<Res<PlayState>>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mouse_buttons: Res<ButtonInput<MouseButton>>,
+    mouse_motion: Res<bevy::input::mouse::AccumulatedMouseMotion>,
+    mut query: Query<(&mut Transform, &mut FpsController, Option<&ScriptComponent>), (With<Camera>, Without<PlayerController>, Without<FollowCamera>)>,
+) {
+    if let Some(state) = play_state {
+        if *state != PlayState::Playing {
+            return;
+        }
+    } else {
+        return;
+    }
+
+    let dt = time.delta_secs();
+
+    for (mut trans, mut fps, script) in &mut query {
+        let speed = script
+            .and_then(|s| s.properties.get("move_speed"))
+            .and_then(|val| match val {
+                ScriptPropertyVal::Float(f) => Some(*f),
+                _ => None,
+            })
+            .unwrap_or(fps.speed);
+
+        // Mouse look: dragging either mouse button rotates camera view
+        if mouse_buttons.pressed(MouseButton::Right) || mouse_buttons.pressed(MouseButton::Left) {
+            fps.yaw -= mouse_motion.delta.x * fps.sensitivity;
+            fps.pitch = (fps.pitch - mouse_motion.delta.y * fps.sensitivity).clamp(-1.45, 1.45);
+        }
+
+        trans.rotation = Quat::from_euler(EulerRot::YXZ, fps.yaw, fps.pitch, 0.0);
+
+        let forward = trans.forward().as_vec3();
+        let right = trans.right().as_vec3();
+        let forward_flat = Vec3::new(forward.x, 0.0, forward.z).normalize_or_zero();
+        let right_flat = Vec3::new(right.x, 0.0, right.z).normalize_or_zero();
+
+        let mut move_dir = Vec3::ZERO;
+        if keys.pressed(KeyCode::KeyW) || keys.pressed(KeyCode::ArrowUp) {
+            move_dir += forward_flat;
+        }
+        if keys.pressed(KeyCode::KeyS) || keys.pressed(KeyCode::ArrowDown) {
+            move_dir -= forward_flat;
+        }
+        if keys.pressed(KeyCode::KeyD) || keys.pressed(KeyCode::ArrowRight) {
+            move_dir += right_flat;
+        }
+        if keys.pressed(KeyCode::KeyA) || keys.pressed(KeyCode::ArrowLeft) {
+            move_dir -= right_flat;
+        }
+
+        if move_dir.length_squared() > 0.001 {
+            trans.translation += move_dir.normalize() * speed * dt;
+        }
     }
 }
 

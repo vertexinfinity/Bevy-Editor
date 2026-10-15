@@ -70,7 +70,7 @@ pub fn handle_play_mode_actions(world: &mut World) {
                 let current_state = *world.resource::<PlayState>();
                 match current_state {
                     PlayState::Edit => {
-                        info!("Entering In-Viewport Play mode: snapshotting authorable scene entities...");
+                        info!("Entering In-Viewport Play mode: zero compilation overhead, executing simulation on loaded models and scripts...");
                         
                         // Extract ONLY authorable SceneEntity entities (fast, <1ms, zero lag, no UI cloning)
                         let dynamic_world = {
@@ -130,7 +130,8 @@ pub fn handle_play_mode_actions(world: &mut World) {
                     .and_then(|p| p.project_dir.clone());
 
                 if let Some(proj_dir) = project_dir {
-                    info!("Launching process-isolated Standalone Game Window for {}...", proj_dir.display());
+                    info!("Launching Standalone Application via 'cargo run' for {}...", proj_dir.display());
+                    info!("(Note: Standalone runner builds the independent Rust binary with Cargo. For instant 0s play on loaded models, click '▶ Play'!)");
 
                     // Save active scene as default_scene.bsn so standalone game runs current edits
                     let scenes_dir = proj_dir.join("assets").join("scenes");

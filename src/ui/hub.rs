@@ -894,7 +894,9 @@ fn spawn_template_card(commands: &mut Commands, parent: Entity, tpl: &ProjectTem
                   mut active_project: ResMut<ActiveProject>,
                   mut registry: ResMut<ProjectRegistry>,
                   mut commands: Commands,
-                  asset_server: Res<AssetServer>| {
+                  mut meshes: ResMut<Assets<Mesh>>,
+                  mut materials: ResMut<Assets<StandardMaterial>>,
+                  existing_scene_entities: Query<Entity, With<crate::scene::SceneEntity>>| {
                 if click.button == PointerButton::Primary {
                     if let Some(folder) = rfd::FileDialog::new()
                         .set_title(&format!("Create Project: {}", template_title))
@@ -921,23 +923,16 @@ fn spawn_template_card(commands: &mut Commands, parent: Entity, tpl: &ProjectTem
                             );
                             active_project.set_project_dir(project_dir.clone());
 
-                            // Spawn template default scene in editor
-                            let default_scene_path = project_dir
-                                .join("assets")
-                                .join("scenes")
-                                .join("default_scene.bsn");
-                            if default_scene_path.is_file() {
-                                let scene_path_str =
-                                    default_scene_path.to_string_lossy().to_string();
-                                commands.spawn((
-                                    crate::scene::SceneEntity,
-                                    Name::new("Default Scene"),
-                                    bevy::world_serialization::DynamicWorldRoot(
-                                        asset_server.load(scene_path_str),
-                                    ),
-                                    Transform::IDENTITY,
-                                ));
+                            // Clear any existing entities and spawn full rich playable scene directly
+                            for ent in &existing_scene_entities {
+                                commands.entity(ent).despawn();
                             }
+                            crate::scene::primitives::spawn_template_scene(
+                                &mut commands,
+                                &mut meshes,
+                                &mut materials,
+                                tpl_kind,
+                            );
 
                             state.set(EditorAppState::InEditor);
                         }
