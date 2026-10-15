@@ -722,7 +722,7 @@ fn rts_click_target(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {{
     if mouse_buttons.just_pressed(MouseButton::Right) {{
-        if let Ok((_entity, mut trans)) = beacon_query.get_single_mut() {{
+        if let Ok((_entity, mut trans)) = beacon_query.single_mut() {{
             trans.translation = Vec3::new(0.0, 0.1, 0.0);
         }} else {{
             commands.spawn((

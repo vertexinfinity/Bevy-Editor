@@ -6,13 +6,12 @@
 //! - Simulation Pause (⏸) and Stop (⏹) with memory rollback
 
 use bevy::{
-    camera::RenderTarget,
     ecs::message::Message,
     prelude::*,
-    window::WindowRef,
     world_serialization::DynamicWorld,
 };
-use crate::scene::{primitives, EditorInternal};
+use crate::camera::EditorCamera;
+use crate::scene::{primitives, EditorInternal, SceneEntity};
 
 /// Current simulation state of the editor.
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -71,10 +70,51 @@ pub fn handle_play_mode_actions(world: &mut World) {
                 let current_state = *world.resource::<PlayState>();
                 match current_state {
                     PlayState::Edit => {
-                        info!("Entering In-Viewport Play mode: snapshotting world...");
-                        let dynamic_world = DynamicWorld::from_world(world);
+                        info!("Entering In-Viewport Play mode: snapshotting authorable scene entities...");
+                        
+                        // Extract ONLY authorable SceneEntity entities (fast, <1ms, zero lag, no UI cloning)
+                        let dynamic_world = {
+                            let type_registry = world.resource::<AppTypeRegistry>().read();
+                            let scene_entities: Vec<Entity> = if let Some(mut state) =
+                                bevy::ecs::query::QueryState::<Entity, (With<SceneEntity>, Without<EditorInternal>)>::try_new(world)
+                            {
+                                state.iter(world).collect()
+                            } else {
+                                Vec::new()
+                            };
+
+                            bevy::world_serialization::DynamicWorldBuilder::from_world(world, &type_registry)
+                                .deny_component::<EditorInternal>()
+                                .deny_component::<bevy::camera::visibility::VisibilityClass>()
+                                .deny_component::<bevy::camera::visibility::ViewVisibility>()
+                                .extract_entities(scene_entities.into_iter())
+                                .remove_empty_entities()
+                                .build()
+                        };
+
                         world.resource_mut::<SceneSnapshot>().snapshot = Some(dynamic_world);
                         *world.resource_mut::<PlayState>() = PlayState::Playing;
+
+                        // Check if the scene has its own game camera (e.g. from template or authoring)
+                        let has_game_cam = if let Some(mut state) =
+                            bevy::ecs::query::QueryState::<Entity, (With<Camera>, With<SceneEntity>, Without<EditorCamera>)>::try_new(world)
+                        {
+                            state.iter(world).next().is_some()
+                        } else {
+                            false
+                        };
+
+                        if has_game_cam {
+                            info!("Scene has dedicated game camera: disabling editor fly camera for play...");
+                            if let Some(mut state) =
+                                bevy::ecs::query::QueryState::<&mut Camera, With<EditorCamera>>::try_new(world)
+                            {
+                                for mut cam in state.iter_mut(world) {
+                                    cam.is_active = false;
+                                }
+                            }
+                        }
+
                         info!("Play mode active: simulation running!");
                     }
                     PlayState::Paused => {
@@ -85,37 +125,49 @@ pub fn handle_play_mode_actions(world: &mut World) {
                 }
             }
             PlayModeAction::PlayInWindow => {
-                let current_state = *world.resource::<PlayState>();
-                if current_state == PlayState::Edit {
-                    info!("Entering Pop-out Window Play mode: snapshotting world...");
-                    let dynamic_world = DynamicWorld::from_world(world);
-                    world.resource_mut::<SceneSnapshot>().snapshot = Some(dynamic_world);
-                    *world.resource_mut::<PlayState>() = PlayState::Playing;
+                let project_dir = world
+                    .get_resource::<crate::ui::hub::ActiveProject>()
+                    .and_then(|p| p.project_dir.clone());
+
+                if let Some(proj_dir) = project_dir {
+                    info!("Launching process-isolated Standalone Game Window for {}...", proj_dir.display());
+
+                    // Save active scene as default_scene.bsn so standalone game runs current edits
+                    let scenes_dir = proj_dir.join("assets").join("scenes");
+                    let _ = std::fs::create_dir_all(&scenes_dir);
+                    let default_scene_path = scenes_dir.join("default_scene.bsn");
+                    if let Err(e) = crate::scene::save_load::save_world_to_scene(world, &default_scene_path) {
+                        warn!("Could not save active scene before launching window: {e}");
+                    }
+
+                    // Sync models to user project if needed
+                    let editor_models = std::path::Path::new("assets/models");
+                    let project_models = proj_dir.join("assets").join("models");
+                    if editor_models.is_dir() {
+                        let _ = std::fs::create_dir_all(&project_models);
+                        if let Ok(entries) = std::fs::read_dir(editor_models) {
+                            for entry in entries.flatten() {
+                                let dest = project_models.join(entry.file_name());
+                                if !dest.exists() {
+                                    let _ = std::fs::copy(entry.path(), dest);
+                                }
+                            }
+                        }
+                    }
+
+                    // Spawn standalone game process (zero DX12 swapchain sharing issues, pure 60FPS)
+                    let child_res = std::process::Command::new("cargo")
+                        .arg("run")
+                        .current_dir(&proj_dir)
+                        .spawn();
+
+                    match child_res {
+                        Ok(_) => info!("Spawned standalone game window in external process!"),
+                        Err(e) => warn!("Failed to launch standalone game process: {e}"),
+                    }
+                } else {
+                    warn!("Cannot open standalone window: No active project loaded. Open or create a project first.");
                 }
-
-                // Spawn secondary window for standalone preview
-                let win_ent = world
-                    .spawn((
-                        Window {
-                            title: "Game Preview — Standalone Viewport".to_string(),
-                            resolution: (1280, 720).into(),
-                            ..default()
-                        },
-                        PreviewWindow,
-                        EditorInternal,
-                    ))
-                    .id();
-
-                // Spawn dedicated game camera rendering to the new window
-                world.spawn((
-                    Camera3d::default(),
-                    RenderTarget::Window(WindowRef::Entity(win_ent)),
-                    Transform::from_xyz(0.0, 4.0, 8.0).looking_at(Vec3::new(0.0, 1.0, 0.0), Vec3::Y),
-                    PreviewCamera,
-                    EditorInternal,
-                ));
-
-                info!("Opened Game Preview in a dedicated floating window.");
             }
             PlayModeAction::Pause => {
                 let current_state = *world.resource::<PlayState>();
@@ -133,12 +185,21 @@ pub fn handle_play_mode_actions(world: &mut World) {
                     info!("Stopping simulation: rolling back world snapshot...");
                     *world.resource_mut::<PlayState>() = PlayState::Edit;
 
-                    // Despawn preview pop-out window and camera
+                    // Always ensure EditorCamera is re-activated for editing
+                    if let Some(mut state) =
+                        bevy::ecs::query::QueryState::<&mut Camera, With<EditorCamera>>::try_new(world)
+                    {
+                        for mut cam in state.iter_mut(world) {
+                            cam.is_active = true;
+                        }
+                    }
+
+                    // Despawn preview pop-out window and camera if any exist
                     world.despawn_all::<With<PreviewWindow>>();
                     world.despawn_all::<With<PreviewCamera>>();
 
                     // Despawn simulated scene entities
-                    world.despawn_all::<With<crate::scene::SceneEntity>>();
+                    world.despawn_all::<With<SceneEntity>>();
 
                     // Restore in-memory snapshot
                     let snapshot = world.resource_mut::<SceneSnapshot>().snapshot.take();

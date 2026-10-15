@@ -10,3 +10,4 @@ test_mcp_client.mjs
 screenshots/
 assets/fonts/seguiemj.ttf
 assets/fonts/seguisym.ttf
+.bevy_editor/

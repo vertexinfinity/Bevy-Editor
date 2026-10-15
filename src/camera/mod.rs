@@ -17,6 +17,7 @@ use bevy::{
     prelude::*,
     window::{CursorGrabMode, CursorOptions, Window},
 };
+use crate::core::play_mode::PlayState;
 use crate::scene::EditorInternal;
 
 /// Marker for the editor's primary viewport camera.
@@ -83,10 +84,17 @@ fn screenshot_on_f12(
 /// Focus viewport camera on selected entity when `F` is pressed.
 fn handle_camera_focus_shortcut(
     keys: Res<ButtonInput<KeyCode>>,
+    play_state: Option<Res<PlayState>>,
     selection: Res<bevy::inspector::InspectorSelection>,
     transforms: Query<&GlobalTransform>,
     mut camera_query: Query<(&mut Transform, &mut FlyCamera), With<EditorCamera>>,
 ) {
+    if let Some(state) = play_state {
+        if *state != PlayState::Edit {
+            return;
+        }
+    }
+
     if !keys.just_pressed(KeyCode::KeyF) {
         return;
     }
@@ -142,6 +150,7 @@ fn setup_editor_camera(mut commands: Commands) {
 
 fn update_fly_camera(
     time: Res<Time>,
+    play_state: Option<Res<PlayState>>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     mouse_motion: Res<AccumulatedMouseMotion>,
@@ -149,6 +158,12 @@ fn update_fly_camera(
     mut windows: Query<(&Window, &mut CursorOptions)>,
     mut camera_query: Query<(&mut Transform, &mut FlyCamera), With<EditorCamera>>,
 ) {
+    if let Some(state) = play_state {
+        if *state != PlayState::Edit {
+            return;
+        }
+    }
+
     let Ok((mut transform, mut fly_cam)) = camera_query.single_mut() else {
         return;
     };

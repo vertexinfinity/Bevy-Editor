@@ -311,21 +311,22 @@ pub fn spawn_menu_bar(mut commands: Commands, current_ws: Res<ActiveWorkspace>) 
         ChildOf(quick_save_btn),
     ));
 
-    // Center Container: Active Project - Scene Name Display Pill
-    let center_title_pill = commands
+    // Active Project - Scene Name Display Pill
+    let title_pill = commands
         .spawn((
             EditorInternal,
             Node {
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                padding: UiRect::axes(px(12), px(3)),
+                padding: UiRect::axes(px(8), px(3)),
+                margin: UiRect::left(px(6)),
                 border: UiRect::all(px(1)),
                 border_radius: radius_button(),
                 ..default()
             },
             BackgroundColor(BG_CARD),
             BorderColor::all(BORDER_SUBTLE),
-            ChildOf(bar_root),
+            ChildOf(left_group),
         ))
         .id();
 
@@ -340,8 +341,24 @@ pub fn spawn_menu_bar(mut commands: Commands, current_ws: Res<ActiveWorkspace>) 
             ..default()
         },
         TextColor(TEXT_SECONDARY),
-        ChildOf(center_title_pill),
+        ChildOf(title_pill),
     ));
+
+    // Center Container: Play-In-Editor (PIE) Transport Controls
+    let center_group = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+            ChildOf(bar_root),
+        ))
+        .id();
+
+    crate::ui::play_bar::spawn_play_controls(&mut commands, center_group);
 
     // 2. Right Container: Platform Exports + Workspace Switcher + MCP Status
     let right_group = commands

@@ -15,16 +15,13 @@ use crate::core::play_mode::PlayModeAction;
 use crate::scene::EditorInternal;
 use crate::ui::theme::*;
 
-pub fn spawn_play_bar(mut commands: Commands) {
+/// Embeds the centered Play-In-Editor (PIE) controls inside a parent toolbar/menu bar.
+pub fn spawn_play_controls(commands: &mut Commands, parent: Entity) -> Entity {
     let bar_root = commands
         .spawn((
             EditorInternal,
             Name::new("PlayControlBar"),
             Node {
-                position_type: PositionType::Absolute,
-                top: px(4),
-                left: Val::Percent(44.0),
-                height: HEIGHT_TOOLBAR,
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
                 padding: UiRect::axes(px(4), px(2)),
@@ -35,19 +32,38 @@ pub fn spawn_play_bar(mut commands: Commands) {
             },
             BackgroundColor(BG_CARD),
             BorderColor::all(BORDER_CARD),
+            ChildOf(parent),
         ))
         .id();
 
     // Play Button (In-Viewport) - Emerald Accent
-    spawn_play_button(&mut commands, bar_root, "▶ Play", PlayModeAction::Play, PlayBtnType::Play);
+    spawn_play_button(commands, bar_root, "▶ Play", PlayModeAction::Play, PlayBtnType::Play);
     // Pause Button
-    spawn_play_button(&mut commands, bar_root, "⏸", PlayModeAction::Pause, PlayBtnType::Normal);
+    spawn_play_button(commands, bar_root, "⏸", PlayModeAction::Pause, PlayBtnType::Normal);
     // Stop Button
-    spawn_play_button(&mut commands, bar_root, "⏹", PlayModeAction::Stop, PlayBtnType::Stop);
+    spawn_play_button(commands, bar_root, "⏹", PlayModeAction::Stop, PlayBtnType::Stop);
     // Step Button
-    spawn_play_button(&mut commands, bar_root, "⏭", PlayModeAction::Step, PlayBtnType::Normal);
+    spawn_play_button(commands, bar_root, "⏭", PlayModeAction::Step, PlayBtnType::Normal);
     // Pop-out Window Button
-    spawn_play_button(&mut commands, bar_root, "⧉ Window", PlayModeAction::PlayInWindow, PlayBtnType::Normal);
+    spawn_play_button(commands, bar_root, "⧉ Window", PlayModeAction::PlayInWindow, PlayBtnType::Normal);
+
+    bar_root
+}
+
+pub fn spawn_play_bar(mut commands: Commands) {
+    // Kept for backward compatibility if invoked independently
+    let root = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                position_type: PositionType::Absolute,
+                top: px(4),
+                left: Val::Percent(44.0),
+                ..default()
+            },
+        ))
+        .id();
+    spawn_play_controls(&mut commands, root);
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

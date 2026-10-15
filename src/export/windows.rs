@@ -82,13 +82,17 @@ impl Exporter for WindowsExporter {
                     || src_content.contains("(1280.0, 720.0)")
                     || src_content.contains("(1280.0_f32, 720.0_f32)")
                     || src_content.contains("DynamicSceneRoot")
+                    || src_content.contains("get_single_mut")
+                    || src_content.contains("get_single")
                 {
                     info!("Auto-patching legacy template syntax in {} for Bevy engine compatibility...", main_src.display());
                     let patched = src_content
                         .replace("shadows_enabled", "shadow_maps_enabled")
                         .replace("(1280.0, 720.0)", "(1280, 720)")
                         .replace("(1280.0_f32, 720.0_f32)", "(1280, 720)")
-                        .replace("DynamicSceneRoot", "bevy::world_serialization::DynamicWorldRoot");
+                        .replace("DynamicSceneRoot", "bevy::world_serialization::DynamicWorldRoot")
+                        .replace("get_single_mut()", "single_mut()")
+                        .replace("get_single()", "single()");
                     let _ = fs::write(&main_src, patched);
                 }
             }

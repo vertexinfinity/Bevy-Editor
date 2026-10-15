@@ -136,7 +136,6 @@ impl Plugin for EditorUiPlugin {
                 OnEnter(EditorAppState::InEditor),
                 (
                     menu::spawn_menu_bar,
-                    play_bar::spawn_play_bar,
                     tools_bar::spawn_tools_bar,
                     hierarchy::spawn_hierarchy_panel,
                     status_bar::spawn_status_bar,
