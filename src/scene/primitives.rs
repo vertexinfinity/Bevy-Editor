@@ -155,6 +155,10 @@ pub fn spawn_template_scene(
                 SceneEntity,
                 Name::new("FPS Camera"),
                 Camera3d::default(),
+                Camera {
+                    is_active: false,
+                    ..default()
+                },
                 FpsController {
                     speed: 10.0,
                     sensitivity: 0.003,
@@ -226,6 +230,10 @@ pub fn spawn_template_scene(
                 SceneEntity,
                 Name::new("Follow Camera"),
                 Camera3d::default(),
+                Camera {
+                    is_active: false,
+                    ..default()
+                },
                 FollowCamera {
                     offset: Vec3::new(0.0, 4.0, 8.0),
                     smooth_speed: 10.0,
@@ -317,6 +325,10 @@ pub fn spawn_template_scene(
                 SceneEntity,
                 Name::new("Orbit Camera"),
                 Camera3d::default(),
+                Camera {
+                    is_active: false,
+                    ..default()
+                },
                 OrbitController {
                     distance: 8.5,
                     yaw: 0.6,
@@ -400,6 +412,10 @@ pub fn spawn_template_scene(
                 SceneEntity,
                 Name::new("RTS Camera"),
                 Camera3d::default(),
+                Camera {
+                    is_active: false,
+                    ..default()
+                },
                 RtsController {
                     speed: 22.0,
                 },

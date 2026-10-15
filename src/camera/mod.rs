@@ -59,7 +59,7 @@ impl Plugin for EditorCameraPlugin {
             })
             .add_systems(
                 Update,
-                (update_fly_camera, handle_camera_focus_shortcut)
+                (sync_camera_active_states, update_fly_camera, handle_camera_focus_shortcut)
                     .run_if(in_state(crate::ui::EditorAppState::InEditor)),
             );
     }
@@ -81,12 +81,48 @@ fn screenshot_on_f12(
     }
 }
 
+/// Manages viewport camera activation:
+/// - In Edit mode: ONLY the EditorCamera is active; scene cameras (FPS, Follow, RTS) are deactivated.
+/// - In Play mode: Scene camera is active (if present), and EditorCamera is deactivated.
+fn sync_camera_active_states(
+    play_state: Option<Res<PlayState>>,
+    mut editor_cameras: Query<&mut Camera, (With<EditorCamera>, Without<crate::scene::SceneEntity>)>,
+    mut scene_cameras: Query<&mut Camera, (With<crate::scene::SceneEntity>, Without<EditorCamera>)>,
+) {
+    let is_playing = play_state.map_or(false, |s| *s == PlayState::Playing);
+
+    if is_playing {
+        let has_scene_cam = scene_cameras.iter().next().is_some();
+        if has_scene_cam {
+            for mut cam in &mut editor_cameras {
+                cam.is_active = false;
+            }
+            for mut cam in &mut scene_cameras {
+                cam.is_active = true;
+            }
+        } else {
+            for mut cam in &mut editor_cameras {
+                cam.is_active = true;
+            }
+        }
+    } else {
+        // Edit Mode: EditorCamera is always primary, scene cameras are suppressed
+        for mut cam in &mut editor_cameras {
+            cam.is_active = true;
+        }
+        for mut cam in &mut scene_cameras {
+            cam.is_active = false;
+        }
+    }
+}
+
 /// Focus viewport camera on selected entity when `F` is pressed.
 fn handle_camera_focus_shortcut(
     keys: Res<ButtonInput<KeyCode>>,
     play_state: Option<Res<PlayState>>,
     selection: Res<bevy::inspector::InspectorSelection>,
     transforms: Query<&GlobalTransform>,
+    local_transforms: Query<&Transform, Without<EditorCamera>>,
     mut camera_query: Query<(&mut Transform, &mut FlyCamera), With<EditorCamera>>,
 ) {
     if let Some(state) = play_state {
@@ -103,26 +139,29 @@ fn handle_camera_focus_shortcut(
         return;
     };
 
-    let Ok(target_global) = transforms.get(selected_entity) else {
+    let target_pos = if let Ok(global) = transforms.get(selected_entity) {
+        global.translation()
+    } else if let Ok(local) = local_transforms.get(selected_entity) {
+        local.translation
+    } else {
         return;
     };
 
-    let Ok((mut cam_transform, mut fly_cam)) = camera_query.single_mut() else {
+    let Some((mut cam_transform, mut fly_cam)) = camera_query.iter_mut().next() else {
         return;
     };
 
-    let target_pos = target_global.translation();
     let offset = Vec3::new(0.0, 3.5, 7.0);
     let new_cam_pos = target_pos + offset;
 
     cam_transform.translation = new_cam_pos;
     cam_transform.look_at(target_pos, Vec3::Y);
 
-    let dir = (target_pos - new_cam_pos).normalize();
+    let dir = (target_pos - new_cam_pos).normalize_or_zero();
     fly_cam.pitch = dir.y.asin().clamp(-1.4, 1.4);
     fly_cam.yaw = (-dir.x).atan2(-dir.z);
 
-    info!("Focused camera on selected entity: {:?}", selected_entity);
+    info!("Focused EditorCamera on selected entity: {:?} at target {:?}", selected_entity, target_pos);
 }
 
 fn setup_editor_camera(mut commands: Commands) {

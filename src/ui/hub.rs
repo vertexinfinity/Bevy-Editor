@@ -641,6 +641,7 @@ pub fn spawn_project_hub(mut commands: Commands, registry: Res<ProjectRegistry>)
 fn spawn_user_project_card(commands: &mut Commands, parent: Entity, item: &UserProjectEntry) {
     let project_path = item.path.clone();
     let project_name = item.name.clone();
+    let project_template = item.template.clone();
 
     let card = commands
         .spawn((
@@ -689,12 +690,13 @@ fn spawn_user_project_card(commands: &mut Commands, parent: Entity, item: &UserP
                   mut active_project: ResMut<ActiveProject>,
                   mut registry: ResMut<ProjectRegistry>,
                   mut commands: Commands,
-                  asset_server: Res<AssetServer>,
+                  mut meshes: ResMut<Assets<Mesh>>,
+                  mut materials: ResMut<Assets<StandardMaterial>>,
                   existing_scene_entities: Query<Entity, With<crate::scene::SceneEntity>>| {
                 if click.button == PointerButton::Primary {
                     let p = PathBuf::from(&project_path);
                     if p.join("Cargo.toml").is_file() {
-                        registry.add_or_update(&p, &project_name, "User Project");
+                        registry.add_or_update(&p, &project_name, &project_template);
                         active_project.set_project_dir(p.clone());
 
                         // Clear any existing entities so they don't stack up
@@ -702,19 +704,14 @@ fn spawn_user_project_card(commands: &mut Commands, parent: Entity, item: &UserP
                             commands.entity(ent).despawn();
                         }
 
-                        let default_scene =
-                            p.join("assets").join("scenes").join("default_scene.bsn");
-                        if default_scene.is_file() {
-                            let scene_path_str = default_scene.to_string_lossy().to_string();
-                            // Do NOT tag the DynamicWorldRoot root entity with SceneEntity to prevent recursion
-                            commands.spawn((
-                                Name::new("Scene Root"),
-                                bevy::world_serialization::DynamicWorldRoot(
-                                    asset_server.load(scene_path_str),
-                                ),
-                                Transform::IDENTITY,
-                            ));
-                        }
+                        // Spawn complete 3D scene with live meshes, materials, and controllers
+                        let tpl_kind = ProjectTemplateKind::from_name(&project_template);
+                        crate::scene::primitives::spawn_template_scene(
+                            &mut commands,
+                            &mut meshes,
+                            &mut materials,
+                            tpl_kind,
+                        );
 
                         state.set(EditorAppState::InEditor);
                     }

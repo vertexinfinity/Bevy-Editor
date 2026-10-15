@@ -28,6 +28,21 @@ impl ProjectTemplateKind {
         }
     }
 
+    pub fn from_name(name: &str) -> Self {
+        let lower = name.to_lowercase();
+        if lower.contains("first") || lower.contains("fps") {
+            Self::FirstPerson
+        } else if lower.contains("strategy") || lower.contains("rts") || lower.contains("top-down") || lower.contains("top down") {
+            Self::Strategy
+        } else if lower.contains("orbit") || lower.contains("turntable") || lower.contains("viewer") {
+            Self::OrbitViewer
+        } else if lower.contains("blank") {
+            Self::Blank
+        } else {
+            Self::Action3D
+        }
+    }
+
     pub fn display_name(&self) -> &'static str {
         match self {
             Self::Blank => "Blank Canvas",
