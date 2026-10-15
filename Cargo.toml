@@ -3,6 +3,11 @@ name = "bevy_editor"
 version = "0.1.0"
 edition = "2024"
 description = "A minimal, modular, extensible Bevy Scene Editor & Multi-Platform Exporter"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/vertexinfinity/Bevy-Editor"
+readme = "README.md"
+keywords = ["bevy", "editor", "gamedev", "3d", "level-editor"]
+categories = ["game-development", "development-tools"]
 
 default-run = "bevylite"
 

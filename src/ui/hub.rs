@@ -35,14 +35,15 @@ pub struct ActiveProject {
 
 impl ActiveProject {
     pub fn set_project_dir(&mut self, project_dir: PathBuf) {
-        let name = project_dir
+        let resolved = project_dir.canonicalize().unwrap_or(project_dir);
+        let name = resolved
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("BevyGame")
             .to_string();
-        let parent = project_dir.parent().unwrap_or(&project_dir);
+        let parent = resolved.parent().unwrap_or(&resolved);
         self.build_dir = Some(parent.join(format!("{name}-build")));
-        self.project_dir = Some(project_dir);
+        self.project_dir = Some(resolved);
         self.name = Some(name);
     }
 }
@@ -91,7 +92,7 @@ pub struct ProjectTemplateItem {
 const RECENT_PROJECTS: &[RecentProjectItem] = &[
     RecentProjectItem {
         name: "Bevylite Workspace",
-        path: "D:/Repos/Bevy/Bevy-Editor",
+        path: ".",
         last_opened: "Current Workspace",
         version: "Bevy 0.20-dev",
     },

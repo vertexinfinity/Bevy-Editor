@@ -58,6 +58,37 @@ src/
 
 ---
 
+## Unified Executable & CLI Tools (`bevylite`)
+
+Bevylite is built as a single, ultra-fast binary serving as both an interactive 3D visual level editor and a headless command-line build & automation pipeline:
+
+```bash
+# Launch the 3D visual editor window
+cargo run
+# or directly:
+bevylite
+
+# Scaffold a clean, standalone Bevy game project
+bevylite new MyGame
+
+# Headless multi-platform build & export
+bevylite build --target windows --output ./dist/windows
+bevylite build --target web --output ./dist/web
+bevylite build --target android --output ./dist/android
+
+# Headless scene operations
+bevylite scene inspect ./assets/scenes/starter.ron
+bevylite scene add-comp ./assets/scenes/starter.ron "Cube" "PointLight"
+
+# Start the Model Context Protocol (MCP) server for AI agent pair programming
+bevylite mcp
+
+# Run in headless interactive console mode
+bevylite -c
+```
+
+---
+
 ## Build Profiles (Bevylite Tiers)
 
 Users can select how lightweight they want the editor depending on workflow and compile constraints:
@@ -69,17 +100,27 @@ Users can select how lightweight they want the editor depending on workflow and 
 | **🚀 Fast Dev Iteration** | `cargo run --features dynamic_linking` | Shared dynamic engine linking (~1.5s re-links during development) |
 | **🛠️ Pro / Full** | `cargo run --features "remote,compressed_textures,solari"` | JSON-RPC MCP server, KTX2/DDS compression, Solari real-time ray tracing |
 
+---
+
+## Viewport Controls
+
 | Input | Action |
 | :--- | :--- |
 | **Right Click (Hold)** | Look around (first-person mouselook) |
-| **W / A / S / D** | Fly forward / left / backward / right |
-| **Q / E** | Fly down / up |
+| **W / A / S / D** | Fly forward / left / backward / right (while holding RMB) |
+| **Q / E** | Fly down / up (while holding RMB) |
 | **Left Shift** | Turbo speed boost |
-| **Scroll Wheel** | Adjust fly speed |
-| **Drag & Drop** | Drop `.glb`, `.gltf`, or `.ron` files from Windows Explorer into the window |
+| **Scroll Wheel** | Adjust fly navigation speed |
+| **F** | Focus viewport camera on selected object |
+| **Drag & Drop** | Drop `.glb`, `.gltf`, or `.ron` files directly from OS into viewport |
 
 ---
 
 ## License
 
-Dual-licensed under MIT or Apache-2.0.
+Dual-licensed under either of:
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+
+at your option.
+
