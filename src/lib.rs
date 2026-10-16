@@ -65,6 +65,7 @@ pub fn run_editor() {
             ui::EditorUiPlugin,
             export::ExportPlugin,
             remote::EditorRemotePlugin::default(),
+            bevylite_lightmapper::BevyliteLightmapperPlugin,
         ))
         .insert_resource(bevy::render::error_handler::RenderErrorHandler(|error, main_world, _| {
             if error.description.contains("Surface::configure")

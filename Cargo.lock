@@ -977,6 +977,7 @@ name = "bevy_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "bevylite_lightmapper",
  "rfd",
  "serde",
  "serde_json",
@@ -2149,6 +2150,15 @@ dependencies = [
  "serde",
  "thiserror 2.0.21",
  "uuid",
+]
+
+[[package]]
+name = "bevylite_lightmapper"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "bytemuck",
+ "serde",
 ]
 
 [[package]]

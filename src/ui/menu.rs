@@ -34,6 +34,8 @@ pub enum MenuAction {
     BuildLinux,
     BuildWeb,
     BuildIos,
+    BakeLightmaps,
+    ToggleLightmapBackend,
 }
 
 #[derive(Message, Clone, Copy, Debug)]
@@ -374,6 +376,105 @@ pub fn spawn_menu_bar(mut commands: Commands, current_ws: Res<ActiveWorkspace>) 
         ))
         .id();
 
+    // Lightmap Backend Toggle Button (GPU / CPU)
+    let backend_toggle_btn = commands
+        .spawn((
+            EditorInternal,
+            MenuAction::ToggleLightmapBackend,
+            Node {
+                padding: UiRect::axes(px(8), px(3)),
+                border: UiRect::all(px(1)),
+                border_radius: radius_button(),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(BG_CARD),
+            BorderColor::all(BORDER_SUBTLE),
+            ChildOf(right_group),
+        ))
+        .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_HOVER);
+            }
+        })
+        .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_CARD);
+            }
+        })
+        .observe(|click: On<PointerClick>, query: Query<&MenuAction>, mut writer: MessageWriter<MenuActionMessage>| {
+            if click.button == PointerButton::Primary {
+                if let Ok(action) = query.get(click.entity) {
+                    writer.write(MenuActionMessage(*action));
+                }
+            }
+        })
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        LightmapBackendLabel,
+        Pickable::IGNORE,
+        Text::new("⚡ GPU (RTX)"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(11.0),
+            weight: FontWeight::MEDIUM,
+            ..default()
+        },
+        TextColor(ACCENT_AMBER),
+        ChildOf(backend_toggle_btn),
+    ));
+
+    // Bake Lightmaps Button
+    let bake_button = commands
+        .spawn((
+            EditorInternal,
+            MenuAction::BakeLightmaps,
+            Node {
+                padding: UiRect::axes(px(10), px(3)),
+                border: UiRect::all(px(1)),
+                border_radius: radius_button(),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(ACCENT_CYAN_DIM),
+            BorderColor::all(BORDER_ACCENT),
+            ChildOf(right_group),
+        ))
+        .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_HOVER);
+            }
+        })
+        .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(ACCENT_CYAN_DIM);
+            }
+        })
+        .observe(|click: On<PointerClick>, query: Query<&MenuAction>, mut writer: MessageWriter<MenuActionMessage>| {
+            if click.button == PointerButton::Primary {
+                if let Ok(action) = query.get(click.entity) {
+                    writer.write(MenuActionMessage(*action));
+                }
+            }
+        })
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new("☀️ Bake Lightmaps"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(11.5),
+            weight: FontWeight::SEMIBOLD,
+            ..default()
+        },
+        TextColor(TEXT_PRIMARY),
+        ChildOf(bake_button),
+    ));
+
     let build_button = commands
         .spawn((
             EditorInternal,
@@ -573,6 +674,26 @@ pub fn spawn_menu_bar(mut commands: Commands, current_ws: Res<ActiveWorkspace>) 
 
 #[derive(Component)]
 pub struct McpStatusLabel;
+
+#[derive(Component)]
+pub struct LightmapBackendLabel;
+
+/// Synchronizes the menu backend label with the active LightmapConfig.
+pub fn sync_lightmap_backend_label(
+    config: Option<Res<bevylite_lightmapper::LightmapConfig>>,
+    mut query: Query<&mut Text, With<LightmapBackendLabel>>,
+) {
+    if let Some(config) = config {
+        if config.is_changed() {
+            for mut text in query.iter_mut() {
+                text.0 = match config.backend {
+                    bevylite_lightmapper::LightmapBackend::Gpu => "⚡ GPU (RTX)".to_string(),
+                    bevylite_lightmapper::LightmapBackend::Cpu => "🖥️ CPU".to_string(),
+                };
+            }
+        }
+    }
+}
 
 fn spawn_build_target_button(
     commands: &mut Commands,
@@ -974,6 +1095,19 @@ fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>) {{
             }
             MenuAction::BuildIos => {
                 trigger_export(world, "ios");
+            }
+            MenuAction::BakeLightmaps => {
+                info!("Triggering lightmap bake request from Menu Bar");
+                world.write_message(bevylite_lightmapper::BakeLightmapRequest::default());
+            }
+            MenuAction::ToggleLightmapBackend => {
+                if let Some(mut config) = world.get_resource_mut::<bevylite_lightmapper::LightmapConfig>() {
+                    config.backend = match config.backend {
+                        bevylite_lightmapper::LightmapBackend::Gpu => bevylite_lightmapper::LightmapBackend::Cpu,
+                        bevylite_lightmapper::LightmapBackend::Cpu => bevylite_lightmapper::LightmapBackend::Gpu,
+                    };
+                    info!("Switched lightmap bake backend to {}", config.backend.label());
+                }
             }
         }
     }

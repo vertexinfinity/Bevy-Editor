@@ -154,6 +154,7 @@ impl Plugin for EditorUiPlugin {
                     menu::handle_switch_workspace,
                     menu::update_window_and_menu_title,
                     menu::update_mcp_bridge_status,
+                    menu::sync_lightmap_backend_label,
                     tools_bar::update_active_tool_highlight,
                     tools_bar::update_viewport_chips,
                     hierarchy::update_hierarchy_list,

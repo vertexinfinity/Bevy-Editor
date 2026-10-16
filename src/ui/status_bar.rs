@@ -252,6 +252,7 @@ pub fn update_status_bar(
     time: Res<Time>,
     play_state: Option<Res<crate::core::play_mode::PlayState>>,
     export_status: Res<ExportStatus>,
+    lightmap_progress: Option<Res<bevylite_lightmapper::LightmapBakeProgress>>,
     selection: Res<InspectorSelection>,
     diagnostics: Res<bevy::diagnostic::DiagnosticsStore>,
     name_query: Query<Option<&Name>>,
@@ -318,6 +319,15 @@ pub fn update_status_bar(
             }
         } else {
             alert_node.display = Display::None;
+        }
+    }
+
+    if let Some(progress) = lightmap_progress.as_deref() {
+        if progress.is_baking {
+            if let Ok(mut text) = text_query.single_mut() {
+                text.0 = format!("☀️ BAKING LIGHTMAPS ({:.0}%): {}", progress.progress * 100.0, progress.status);
+            }
+            return;
         }
     }
 

@@ -1,0 +1,14 @@
+[package]
+name = "bevylite_lightmapper"
+version = "0.1.0"
+edition = "2024"
+description = "A CPU & GPU (RTX WGPU Compute) lightmap baker for Bevy scenes"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+bevy = { git = "https://github.com/bevyengine/bevy", branch = "main", default-features = false, features = [
+    "3d",
+    "serialize",
+] }
+bytemuck = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
