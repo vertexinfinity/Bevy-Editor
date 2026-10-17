@@ -313,6 +313,7 @@ fn parse_console_command(input: &str) -> Option<(String, Option<Value>)> {
                  - color <r> <g> <b> [metallic] [rough]: Set material on selected entity\n\
                  - delete [name|id]                    : Delete entity\n\
                  - bake [gpu|cpu] [resolution]         : Bake lightmaps\n\
+                 - clear_lightmaps                     : Remove baked lightmaps from all meshes\n\
                  - screenshot [path]                   : Save window screenshot PNG\n\
                  - save [path]                         : Save scene to file\n\
                  - load <path>                         : Load scene from file\n\
@@ -419,6 +420,9 @@ fn parse_console_command(input: &str) -> Option<(String, Option<Value>)> {
                 "editor/bake".to_string(),
                 Some(json!({ "backend": backend, "resolution": resolution })),
             ))
+        }
+        "clear_lightmaps" | "clear_bake" => {
+            Some(("editor/clear_lightmaps".to_string(), Some(json!({}))))
         }
         "screenshot" | "snap" => {
             let path = parts
@@ -542,6 +546,10 @@ fn dispatch_rpc_method(
         "editor/bake" | "bake" => {
             ensure_in_editor(world);
             rpc_bake(world, params)
+        }
+        "editor/clear_lightmaps" | "clear_lightmaps" => {
+            ensure_in_editor(world);
+            rpc_clear_lightmaps(world)
         }
         "editor/screenshot" | "screenshot" => {
             ensure_in_editor(world);
@@ -1499,6 +1507,42 @@ fn rpc_bake(world: &mut World, params: Option<Value>) -> Result<Value, (i32, Str
         "backend": format!("{:?}", backend),
         "resolution": resolution,
         "samples": samples,
+    }))
+}
+
+fn rpc_clear_lightmaps(world: &mut World) -> Result<Value, (i32, String)> {
+    let mut lightmapped_entities = Vec::new();
+    let mut query = world.query_filtered::<Entity, With<bevy::pbr::Lightmap>>();
+    for entity in query.iter(world) {
+        lightmapped_entities.push(entity);
+    }
+
+    let count = lightmapped_entities.len();
+    for entity in lightmapped_entities {
+        world.entity_mut(entity).remove::<bevy::pbr::Lightmap>();
+        if let Some(mut mesh) = world.get_mut::<Mesh3d>(entity) {
+            mesh.set_changed();
+        }
+        if let Some(mut mat) = world.get_mut::<MeshMaterial3d<StandardMaterial>>(entity) {
+            mat.set_changed();
+        }
+    }
+
+    if let Some(mut active) = world.get_resource_mut::<ActiveLightmap>() {
+        active.handle = None;
+        active.backend_used = None;
+    }
+
+    if let Some(mut progress) = world.get_resource_mut::<LightmapBakeProgress>() {
+        progress.is_baking = false;
+        progress.progress = 0.0;
+        progress.status = "Lightmaps cleared".to_string();
+        progress.completion_timer = 2.0;
+    }
+
+    Ok(json!({
+        "status": "ok",
+        "cleared_count": count,
     }))
 }
 
