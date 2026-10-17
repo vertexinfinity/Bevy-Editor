@@ -2,8 +2,9 @@
 
 A minimal, modular, lightning-fast 3D Scene Editor, GPU Lightmapper, and Multi-Platform Exporter built for [Bevy Engine](https://bevy.org) (`v0.20-dev`).
 
-[![Release](https://img.shields.io/github/v/release/vertexinfinity/Bevy-Editor?include_prereleases&label=latest%20release&color=00e5ff)](https://github.com/vertexinfinity/Bevy-Editor/releases)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/vertexinfinity/Bevy-Editor/release.yml?branch=main&label=build)](https://github.com/vertexinfinity/Bevy-Editor/actions)
+[![Latest Release](https://img.shields.io/github/v/release/vertexinfinity/Bevy-Editor?include_prereleases&label=release&color=00e5ff)](https://github.com/vertexinfinity/Bevy-Editor/releases/latest)
+[![CI Tests](https://img.shields.io/github/actions/workflow/status/vertexinfinity/Bevy-Editor/ci.yml?branch=main&label=tests)](https://github.com/vertexinfinity/Bevy-Editor/actions/workflows/ci.yml)
+[![Release Builds](https://img.shields.io/github/actions/workflow/status/vertexinfinity/Bevy-Editor/release.yml?label=builds)](https://github.com/vertexinfinity/Bevy-Editor/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
 [![Bevy Compatibility](https://img.shields.io/badge/Bevy-0.20--dev-fd971f.svg)](https://bevy.org)
 
