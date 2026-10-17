@@ -28,8 +28,8 @@ pub struct BakeProgressBarPercent;
 
 #[derive(bevy::ecs::system::SystemParam)]
 pub struct BakeProgressUiParams<'w, 's> {
-    pub widget: Query<'w, 's, &'static mut Node, With<BakeProgressBarWidget>>,
-    pub fill: Query<'w, 's, (&'static mut Node, &'static mut BackgroundColor), (With<BakeProgressBarFill>, Without<BakeProgressBarWidget>)>,
+    pub widget: Query<'w, 's, &'static mut Node, (With<BakeProgressBarWidget>, Without<SystemAlertChip>, Without<BakeProgressBarFill>)>,
+    pub fill: Query<'w, 's, (&'static mut Node, &'static mut BackgroundColor), (With<BakeProgressBarFill>, Without<BakeProgressBarWidget>, Without<SystemAlertChip>)>,
     pub pct_text: Query<'w, 's, &'static mut Text, (With<BakeProgressBarPercent>, Without<StatusText>, Without<ActiveContextChip>, Without<FpsCounterLabel>)>,
 }
 
@@ -337,7 +337,7 @@ pub fn update_status_bar(
     mut text_query: Query<&mut Text, (With<StatusText>, Without<ActiveContextChip>, Without<FpsCounterLabel>)>,
     mut chip_query: Query<&mut Text, (With<ActiveContextChip>, Without<StatusText>, Without<FpsCounterLabel>)>,
     mut fps_query: Query<&mut Text, (With<FpsCounterLabel>, Without<StatusText>, Without<ActiveContextChip>)>,
-    mut alert_query: Query<(&mut Node, &mut BorderColor, &Children), With<SystemAlertChip>>,
+    mut alert_query: Query<(&mut Node, &mut BorderColor, &Children), (With<SystemAlertChip>, Without<BakeProgressBarWidget>, Without<BakeProgressBarFill>)>,
     mut alert_text_query: Query<&mut Text, (Without<StatusText>, Without<ActiveContextChip>, Without<FpsCounterLabel>, Without<BakeProgressBarPercent>)>,
     mut bake_ui: BakeProgressUiParams,
     mut check_timer: Local<f32>,
