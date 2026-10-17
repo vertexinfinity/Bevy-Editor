@@ -1,8 +1,44 @@
 # Bevy Editor (Bevylite)
 
-A minimal, modular, lightning-fast 3D Scene Editor, GPU Lightmapper, and Multi-Platform Exporter for [Bevy Engine](https://bevy.org) (`0.20-dev`).
+A minimal, modular, lightning-fast 3D Scene Editor, GPU Lightmapper, and Multi-Platform Exporter built for [Bevy Engine](https://bevy.org) (`v0.20-dev`).
 
-Built natively on Bevy's official UI architecture (`bevy_ui` + `bevy_feathers`), camera controllers (`bevy_camera_controller`), reflection inspector (`bevy_inspector`), and scene serialization (`bevy_scene`).
+[![Release](https://img.shields.io/github/v/release/vertexinfinity/Bevy-Editor?include_prereleases&label=latest%20release&color=00e5ff)](https://github.com/vertexinfinity/Bevy-Editor/releases)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/vertexinfinity/Bevy-Editor/release.yml?branch=main&label=build)](https://github.com/vertexinfinity/Bevy-Editor/actions)
+[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
+[![Bevy Compatibility](https://img.shields.io/badge/Bevy-0.20--dev-fd971f.svg)](https://bevy.org)
+
+---
+
+## 📥 Download Pre-Built Binaries
+
+Pre-compiled standalone packages are automatically built for Windows, Linux, and macOS:
+
+* **[Download Latest Stable Release](https://github.com/vertexinfinity/Bevy-Editor/releases/latest)** (Production-ready tagged builds)
+* **[Browse All Releases & Nightlies](https://github.com/vertexinfinity/Bevy-Editor/releases)**
+
+| Platform | Target Architecture | Package |
+| :--- | :--- | :--- |
+| 🪟 **Windows** | `x86_64-pc-windows-msvc` | `.zip` (Executable + bundled assets) |
+| 🐧 **Linux** | `x86_64-unknown-linux-gnu` | `.tar.gz` (Standalone ELF + assets) |
+| 🍎 **macOS (Apple Silicon)** | `aarch64-apple-darwin` (M1/M2/M3/M4) | `.tar.gz` |
+| 🍏 **macOS (Intel)** | `x86_64-apple-darwin` | `.tar.gz` |
+
+---
+
+## 💡 About Bevylite & Relationship to Bevy
+
+### Origin Story
+> *When I first began working with Bevy, I was searching for an intuitive, standalone visual scene editor and level designer. At the time, I wasn't aware of other editor initiatives in the broader ecosystem, so I started building one from scratch to solve my own workflow needs. By the time I discovered other projects, Bevylite had already evolved into a tailored, ultra-fast tool with distinct architecture choices—so I decided to continue its development and share it with the community.*
+
+### Why Bevylite? What sets it apart?
+Bevylite is an independent, community-driven project designed with specific philosophies:
+1. **Always Tracking Bleeding-Edge Bevy (`0.20-dev`)**: Rather than lagging behind stable releases, Bevylite actively tracks Bevy `main` so you can use next-generation features (like modern `bevy_feathers` UI tokens, `Solari` real-time ray tracing, and Bevy PBR lightmapping) today.
+2. **Built-in Dual GPU RTX & CPU Lightmapper (`bevylite_lightmapper`)**: Features an integrated sub-second WGPU compute shader ray tracer that bakes ambient occlusion and soft contact shadows directly into native `bevy::pbr::Lightmap` assets.
+3. **Headless & Remote Pair-Programming (JSON-RPC 2.0 & `stdin`)**: Bevylite runs an always-on remote automation server (`http://127.0.0.1:15703`). AI agents (MCP, Gemini, Claude, ChatGPT), CI runners, or custom scripts can inspect the scene tree, spawn objects, tune materials, bake lightmaps, and capture screenshots programmatically.
+4. **Turnkey Multi-Platform Exporter**: Pluggable export pipeline that packages and generates deployable projects for Windows, Linux, Web/WASM, Android APK, and iOS Xcode.
+5. **Fast Modular Tiers**: Decoupled feature flags allowing you to compile a stripped-down ~120-crate viewer (`--features lite`) up to a full production studio suite (`--features "remote,compressed_textures,solari"`).
+
+*(Note: Bevylite is an independent open-source tool and is not the official Bevy editor project; it is built to empower creators using Bevy Engine).*
 
 ---
 
@@ -51,10 +87,11 @@ Bevylite features an always-on remote automation bridge running concurrently ove
 | `editor/set_material` | `material <id> ...` | Modifies base color, metallic, roughness, and unlit flags. |
 | `editor/delete_entity` | `delete <id>` | Despawns a scene entity. |
 | `editor/bake` | `bake [gpu\|cpu] [res] [spp]` | Triggers asynchronous lightmap baking with custom resolution and sample counts. |
+| `editor/clear_lightmaps` | `clear_lightmaps` | Strips baked lightmaps from meshes and restores dynamic shading. |
 | `editor/save_scene` | `save [path]` | Serializes scene and sidecar manifest to disk. |
 | `editor/load_scene` | `load [path]` | Restores scene geometry, materials, and hierarchy from disk. |
 | `editor/clear_scene` | `clear` | Clears all user scene entities. |
-| `editor/screenshot` | `screenshot [path]` | Captures viewport framebuffer directly to PNG. |
+| `editor/screenshot` | `screenshot [path]` | Captures viewport framebuffer directly to PNG (or press `F12`). |
 | `editor/play_mode` | `play` / `pause` / `stop` | Toggles simulation play mode. |
 | `editor/exit` | `exit` / `quit` | Gracefully closes the editor. |
 
@@ -98,6 +135,7 @@ cargo run --features dynamic_linking
 | **Left Shift** | Turbo speed boost |
 | **Scroll Wheel** | Adjust fly navigation speed |
 | **F** | Focus viewport camera on selected object |
+| **F12** | Take instant screenshot to `screenshots/` |
 | **Drag & Drop** | Drop `.glb`, `.gltf`, or `.ron` files directly from OS into viewport |
 
 ---
