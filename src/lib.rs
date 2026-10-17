@@ -20,6 +20,7 @@ use bevy::{
         settings::{Backends, PowerPreference, RenderCreation, WgpuSettings},
         RenderPlugin,
     },
+    winit::WinitSettings,
 };
 
 /// Launches the visual Bevylite Editor window application.
@@ -73,6 +74,7 @@ pub fn run_editor() {
             remote::EditorRemotePlugin::default(),
             bevylite_lightmapper::BevyliteLightmapperPlugin,
         ))
+        .insert_resource(WinitSettings::desktop_app())
         .insert_resource(bevy::render::error_handler::RenderErrorHandler(|error, main_world, _| {
             if error.description.contains("Surface::configure")
                 || error.description.contains("Invalid surface")

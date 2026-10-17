@@ -16,6 +16,7 @@ use bevy::{
     input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseButton},
     prelude::*,
     window::{CursorGrabMode, CursorOptions, Window},
+    winit::{UpdateMode, WinitSettings},
 };
 use crate::core::play_mode::PlayState;
 use crate::scene::EditorInternal;
@@ -196,6 +197,7 @@ fn update_fly_camera(
     mouse_scroll: Res<AccumulatedMouseScroll>,
     mut windows: Query<(&Window, &mut CursorOptions)>,
     mut camera_query: Query<(&mut Transform, &mut FlyCamera), With<EditorCamera>>,
+    mut winit_settings: Option<ResMut<WinitSettings>>,
 ) {
     if let Some(state) = play_state {
         if *state != PlayState::Edit {
@@ -212,6 +214,9 @@ fn update_fly_camera(
     // 1. Right Mouse Button toggles flight mode
     if mouse_button.just_pressed(MouseButton::Right) {
         fly_cam.is_active = true;
+        if let Some(ref mut settings) = winit_settings {
+            settings.focused_mode = UpdateMode::Continuous;
+        }
         for (window, mut cursor_options) in &mut windows {
             if window.focused {
                 cursor_options.grab_mode = CursorGrabMode::Locked;
@@ -222,6 +227,9 @@ fn update_fly_camera(
 
     if mouse_button.just_released(MouseButton::Right) {
         fly_cam.is_active = false;
+        if let Some(ref mut settings) = winit_settings {
+            settings.focused_mode = UpdateMode::reactive(std::time::Duration::from_secs(5));
+        }
         for (_, mut cursor_options) in &mut windows {
             cursor_options.grab_mode = CursorGrabMode::None;
             cursor_options.visible = true;

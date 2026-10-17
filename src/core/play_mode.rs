@@ -125,6 +125,9 @@ pub fn handle_play_mode_actions(world: &mut World) {
                     }
                     PlayState::Playing => {}
                 }
+                if let Some(mut settings) = world.get_resource_mut::<bevy::winit::WinitSettings>() {
+                    settings.focused_mode = bevy::winit::UpdateMode::Continuous;
+                }
             }
             PlayModeAction::PlayInWindow => {
                 let project_dir = world
@@ -212,6 +215,11 @@ pub fn handle_play_mode_actions(world: &mut World) {
                         info!("World restored to exact pre-play snapshot.");
                     } else {
                         let _ = world.run_system_cached(primitives::spawn_starter_scene);
+                    }
+
+                    // Restore energy-efficient reactive update mode when returning to Edit mode
+                    if let Some(mut settings) = world.get_resource_mut::<bevy::winit::WinitSettings>() {
+                        settings.focused_mode = bevy::winit::UpdateMode::reactive(std::time::Duration::from_secs(5));
                     }
                 }
             }
