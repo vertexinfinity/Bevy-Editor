@@ -123,6 +123,7 @@ impl Exporter for AndroidExporter {
                     "Android Gradle template generated at {:?}. (Install 'cargo-apk' to directly compile APKs)",
                     export_dir
                 ),
+                zip_artifact: None,
             })
         }
     }

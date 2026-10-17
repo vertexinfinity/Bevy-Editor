@@ -174,6 +174,7 @@ async fn main() {
                 "Micro-runner project scaffolded at {}\nRun 'cargo run --release' inside for a ~2MB binary!",
                 export_dir.display()
             ),
+            zip_artifact: None,
         })
     }
 }

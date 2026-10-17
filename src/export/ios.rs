@@ -48,6 +48,7 @@ impl Exporter for IosExporter {
         Ok(ExportResult {
             primary_artifact: export_dir.clone(),
             message: format!("iOS Xcode configuration created at {:?}", export_dir),
+            zip_artifact: None,
         })
     }
 }

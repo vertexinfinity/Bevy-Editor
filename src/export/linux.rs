@@ -186,6 +186,7 @@ impl Exporter for LinuxExporter {
         Ok(ExportResult {
             primary_artifact: bin_folder.clone(),
             message: format!("Linux project build completed in {}", bin_folder.display()),
+            zip_artifact: None,
         })
     }
 }

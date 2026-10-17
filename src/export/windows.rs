@@ -251,10 +251,32 @@ impl Exporter for WindowsExporter {
             let _ = copy_dir_all(&assets_dir, &bin_folder.join("assets"));
         }
 
+        // Generate zipped binary distribution package
+        let zip_path = export_dir.join(format!("{}-windows.zip", ctx.project_name.to_lowercase().replace(' ', "_")));
+        let mut zip_artifact = None;
+        if bin_folder.is_dir() {
+            info!("[Export:Windows] Creating ZIP archive at {}", zip_path.display());
+            let powershell_cmd = format!(
+                "Compress-Archive -Path '{}/*' -DestinationPath '{}' -Force",
+                bin_folder.display(),
+                zip_path.display()
+            );
+            let zip_res = Command::new("powershell")
+                .args(["-NoProfile", "-Command", &powershell_cmd])
+                .output();
+            if let Ok(out) = zip_res {
+                if out.status.success() && zip_path.is_file() {
+                    info!("[Export:Windows] Successfully created ZIP archive: {}", zip_path.display());
+                    zip_artifact = Some(zip_path.clone());
+                }
+            }
+        }
+
         info!("[Export:Windows] Build completed successfully.");
         Ok(ExportResult {
             primary_artifact: bin_folder.clone(),
             message: format!("Windows project build completed in {}", bin_folder.display()),
+            zip_artifact,
         })
     }
 }

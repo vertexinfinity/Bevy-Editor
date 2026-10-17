@@ -253,6 +253,7 @@ impl Exporter for WebExporter {
                     return Ok(ExportResult {
                         primary_artifact: export_dir.join("index.html"),
                         message: format!("WebAssembly distribution bundle ready in {}", export_dir.display()),
+                        zip_artifact: None,
                     });
                 }
             }
@@ -269,6 +270,7 @@ impl Exporter for WebExporter {
         Ok(ExportResult {
             primary_artifact: export_dir.join("index.html"),
             message: format!("WebAssembly export ready in {}. (Serve with `python -m http.server` or upload to itch.io)", export_dir.display()),
+            zip_artifact: None,
         })
     }
 }
