@@ -194,3 +194,47 @@ fn test_end_to_end_cpu_lightmap_baking() {
         32 * 32
     );
 }
+
+#[test]
+fn test_gpu_struct_alignments() {
+    // Assert exact memory sizes expected by the GPU shader
+    assert_eq!(std::mem::size_of::<LightmapVertex>(), 48, "LightmapVertex must be 48 bytes");
+    assert_eq!(std::mem::size_of::<LightmapTriangle>(), 160, "LightmapTriangle must be 160 bytes");
+    assert_eq!(std::mem::size_of::<GpuLight>(), 48, "GpuLight must be 48 bytes");
+
+    // Also assert alignments
+    assert_eq!(std::mem::align_of::<LightmapVertex>(), 4);
+    assert_eq!(std::mem::align_of::<LightmapTriangle>(), 4);
+    assert_eq!(std::mem::align_of::<GpuLight>(), 4);
+
+    // Verify byte layout offsets of GpuLight match WGSL Light struct
+    // Offset 0: position_or_direction (12 bytes)
+    // Offset 12: light_type (4 bytes)
+    // Offset 16: color (12 bytes)
+    // Offset 28: intensity (4 bytes)
+    // Offset 32: range (4 bytes)
+    // Offset 36..48: _pad (12 bytes)
+    let light = GpuLight {
+        position_or_direction: [1.0, 2.0, 3.0],
+        light_type: 1,
+        color: [0.5, 0.6, 0.7],
+        intensity: 2.5,
+        range: 15.0,
+        _pad: [0.0; 3],
+    };
+    let bytes = bytemuck::bytes_of(&light);
+    assert_eq!(bytes.len(), 48);
+
+    // Verify light_type is at byte 12
+    let light_type_bytes = &bytes[12..16];
+    assert_eq!(u32::from_ne_bytes(light_type_bytes.try_into().unwrap()), 1);
+
+    // Verify intensity is at byte 28
+    let intensity_bytes = &bytes[28..32];
+    assert_eq!(f32::from_ne_bytes(intensity_bytes.try_into().unwrap()), 2.5);
+
+    // Verify range is at byte 32
+    let range_bytes = &bytes[32..36];
+    assert_eq!(f32::from_ne_bytes(range_bytes.try_into().unwrap()), 15.0);
+}
+

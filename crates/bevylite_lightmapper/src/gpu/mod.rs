@@ -66,18 +66,28 @@ pub fn bake_lightmap_gpu(
     });
 
     // 2. Storage Triangles Buffer
-    let triangles_bytes = bytemuck::cast_slice(&scene.triangles);
+    let dummy_triangle = [crate::geometry::LightmapTriangle::zeroed()];
+    let triangles_bytes = if scene.triangles.is_empty() {
+        bytemuck::cast_slice(&dummy_triangle)
+    } else {
+        bytemuck::cast_slice(&scene.triangles)
+    };
     let triangles_buffer = device.create_buffer_with_data(&BufferInitDescriptor {
         label: Some("lightmap_triangles_buffer"),
-        contents: if triangles_bytes.is_empty() { &[0u8; 16] } else { triangles_bytes },
+        contents: triangles_bytes,
         usage: BufferUsages::STORAGE,
     });
 
     // 3. Storage Lights Buffer
-    let lights_bytes = bytemuck::cast_slice(&scene.lights);
+    let dummy_light = [crate::geometry::GpuLight::zeroed()];
+    let lights_bytes = if scene.lights.is_empty() {
+        bytemuck::cast_slice(&dummy_light)
+    } else {
+        bytemuck::cast_slice(&scene.lights)
+    };
     let lights_buffer = device.create_buffer_with_data(&BufferInitDescriptor {
         label: Some("lightmap_lights_buffer"),
-        contents: if lights_bytes.is_empty() { &[0u8; 16] } else { lights_bytes },
+        contents: lights_bytes,
         usage: BufferUsages::STORAGE,
     });
 
