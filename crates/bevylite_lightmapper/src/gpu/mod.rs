@@ -24,16 +24,22 @@ struct GpuBakeParams {
     _pad: [f32; 2],
 }
 
-/// Executes GPU lightmap baking via WGPU compute shaders.
-pub fn bake_lightmap_gpu(
+/// Active in-flight GPU lightmap compute pass.
+pub struct GpuBakeTaskState {
+    pub staging_buffer: Buffer,
+    pub receiver: std::sync::Mutex<std::sync::mpsc::Receiver<Result<(), BufferAsyncError>>>,
+    pub total_pixels: usize,
+    pub res: u32,
+    pub dilation_passes: u32,
+}
+
+/// Dispatches the GPU lightmap compute shader pass non-blockingly and begins staging buffer readback.
+pub fn dispatch_gpu_bake(
     device: &RenderDevice,
     queue: &RenderQueue,
     scene: &BakeScene,
     config: &LightmapConfig,
-    mut progress_callback: impl FnMut(f32, &str),
-) -> Result<Vec<u8>, String> {
-    progress_callback(0.1, "Initializing GPU compute pipeline...");
-
+) -> Result<GpuBakeTaskState, String> {
     let shader_src = include_str!("lightmap_bake.wgsl");
     let shader = unsafe {
         device.create_shader_module(ShaderModuleDescriptor {
@@ -193,8 +199,6 @@ pub fn bake_lightmap_gpu(
         cache: None,
     });
 
-    progress_callback(0.3, "Dispatching GPU RTX compute workgroups...");
-
     // 8. Command Encoder & Compute Pass
     let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor {
         label: Some("lightmap_bake_encoder"),
@@ -217,8 +221,6 @@ pub fn bake_lightmap_gpu(
     encoder.copy_buffer_to_buffer(&output_buffer, 0, &staging_buffer, 0, pixel_byte_size as u64);
     queue.submit(Some(encoder.finish()));
 
-    progress_callback(0.7, "Reading back GPU texture buffers...");
-
     // 9. Readback GPU Staging Buffer
     let buffer_slice = staging_buffer.slice(..);
     let (sender, receiver) = std::sync::mpsc::channel();
@@ -226,39 +228,44 @@ pub fn bake_lightmap_gpu(
         let _ = sender.send(v);
     });
 
-    // Poll the GPU until mapping completes
-    let mut poll_count = 0;
-    while receiver.try_recv().is_err() {
-        let _ = device.poll(PollType::Poll);
-        std::thread::yield_now();
-        poll_count += 1;
-        if poll_count > 50000 {
-            return Err("GPU compute shader execution timed out after 50000 polls".to_string());
-        }
-    }
+    Ok(GpuBakeTaskState {
+        staging_buffer,
+        receiver: std::sync::Mutex::new(receiver),
+        total_pixels,
+        res,
+        dilation_passes: config.dilation_passes,
+    })
+}
 
+/// Completes readback, dilation, and filtering once the GPU compute pass finishes mapping.
+pub fn finish_gpu_bake(
+    task: GpuBakeTaskState,
+    mut progress_callback: impl FnMut(f32, &str),
+) -> Result<Vec<u8>, String> {
+    progress_callback(0.8, "Processing GPU readback buffer...");
+    let buffer_slice = task.staging_buffer.slice(..);
     let data = buffer_slice.get_mapped_range().map_err(|e| format!("{:?}", e))?;
     let floats: &[f32] = bytemuck::cast_slice(&data);
 
     // Extract RGB channels
-    let mut float_rgb = vec![0.0f32; total_pixels * 3];
-    for i in 0..total_pixels {
+    let mut float_rgb = vec![0.0f32; task.total_pixels * 3];
+    for i in 0..task.total_pixels {
         float_rgb[i * 3] = floats[i * 4];
         float_rgb[i * 3 + 1] = floats[i * 4 + 1];
         float_rgb[i * 3 + 2] = floats[i * 4 + 2];
     }
     drop(data);
-    staging_buffer.unmap();
+    task.staging_buffer.unmap();
 
-    progress_callback(0.85, "Dilating UV seam borders...");
-    let dilated = multi_pass_dilate(float_rgb, res as usize, res as usize, 3, config.dilation_passes);
+    progress_callback(0.88, "Dilating UV seam borders...");
+    let dilated = multi_pass_dilate(float_rgb, task.res as usize, task.res as usize, 3, task.dilation_passes);
 
-    progress_callback(0.92, "Applying denoise filter...");
-    let smoothed = smooth_lightmap(&dilated, res as usize, res as usize, 3);
+    progress_callback(0.94, "Applying denoise filter...");
+    let smoothed = smooth_lightmap(&dilated, task.res as usize, task.res as usize, 3);
 
     progress_callback(0.98, "Packing into texture...");
-    let mut rgba_bytes = vec![0u8; total_pixels * 4];
-    for i in 0..total_pixels {
+    let mut rgba_bytes = vec![0u8; task.total_pixels * 4];
+    for i in 0..task.total_pixels {
         let r = (smoothed[i * 3].clamp(0.0, 1.0) * 255.0) as u8;
         let g = (smoothed[i * 3 + 1].clamp(0.0, 1.0) * 255.0) as u8;
         let b = (smoothed[i * 3 + 2].clamp(0.0, 1.0) * 255.0) as u8;
@@ -270,4 +277,27 @@ pub fn bake_lightmap_gpu(
 
     progress_callback(1.0, "GPU baking complete!");
     Ok(rgba_bytes)
+}
+
+/// Executes GPU lightmap baking via WGPU compute shaders (synchronous helper).
+pub fn bake_lightmap_gpu(
+    device: &RenderDevice,
+    queue: &RenderQueue,
+    scene: &BakeScene,
+    config: &LightmapConfig,
+    mut progress_callback: impl FnMut(f32, &str),
+) -> Result<Vec<u8>, String> {
+    progress_callback(0.1, "Initializing GPU compute pipeline...");
+    let task = dispatch_gpu_bake(device, queue, scene, config)?;
+
+    let start_wait = std::time::Instant::now();
+    while task.receiver.lock().map_err(|e| e.to_string())?.try_recv().is_err() {
+        let _ = device.poll(PollType::Poll);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        if start_wait.elapsed().as_secs() > 60 {
+            return Err("GPU compute shader execution timed out after 60 seconds".to_string());
+        }
+    }
+
+    finish_gpu_bake(task, progress_callback)
 }

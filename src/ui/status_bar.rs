@@ -17,6 +17,22 @@ pub struct FpsCounterLabel;
 #[derive(Component)]
 pub struct SystemAlertChip;
 
+#[derive(Component)]
+pub struct BakeProgressBarWidget;
+
+#[derive(Component)]
+pub struct BakeProgressBarFill;
+
+#[derive(Component)]
+pub struct BakeProgressBarPercent;
+
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct BakeProgressUiParams<'w, 's> {
+    pub widget: Query<'w, 's, &'static mut Node, With<BakeProgressBarWidget>>,
+    pub fill: Query<'w, 's, (&'static mut Node, &'static mut BackgroundColor), (With<BakeProgressBarFill>, Without<BakeProgressBarWidget>)>,
+    pub pct_text: Query<'w, 's, &'static mut Text, (With<BakeProgressBarPercent>, Without<StatusText>, Without<ActiveContextChip>, Without<FpsCounterLabel>)>,
+}
+
 pub fn spawn_status_bar(mut commands: Commands) {
     let bar_root = commands
         .spawn((
@@ -66,6 +82,68 @@ pub fn spawn_status_bar(mut commands: Commands) {
         },
         BackgroundColor(ACCENT_CYAN),
         ChildOf(left_container),
+    ));
+
+    // Visual Lightmap Bake Progress Bar Widget (hidden by default)
+    let progress_widget = commands
+        .spawn((
+            EditorInternal,
+            BakeProgressBarWidget,
+            Node {
+                display: Display::None,
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: px(6),
+                padding: UiRect::axes(px(6), px(2)),
+                border_radius: radius_button(),
+                border: UiRect::all(px(1)),
+                ..default()
+            },
+            BackgroundColor(BG_CARD),
+            BorderColor::all(BORDER_SUBTLE),
+            ChildOf(left_container),
+        ))
+        .id();
+
+    let track = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                width: px(110),
+                height: px(6),
+                border_radius: radius_pill(),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            BackgroundColor(BG_SHELL),
+            ChildOf(progress_widget),
+        ))
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        BakeProgressBarFill,
+        Node {
+            width: Val::Percent(0.0),
+            height: Val::Percent(100.0),
+            border_radius: radius_pill(),
+            ..default()
+        },
+        BackgroundColor(ACCENT_CYAN),
+        ChildOf(track),
+    ));
+
+    commands.spawn((
+        EditorInternal,
+        BakeProgressBarPercent,
+        Text::new("0%"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(10.0),
+            weight: FontWeight::SEMIBOLD,
+            ..default()
+        },
+        TextColor(ACCENT_CYAN),
+        ChildOf(progress_widget),
     ));
 
     // Left status text
@@ -260,7 +338,8 @@ pub fn update_status_bar(
     mut chip_query: Query<&mut Text, (With<ActiveContextChip>, Without<StatusText>, Without<FpsCounterLabel>)>,
     mut fps_query: Query<&mut Text, (With<FpsCounterLabel>, Without<StatusText>, Without<ActiveContextChip>)>,
     mut alert_query: Query<(&mut Node, &mut BorderColor, &Children), With<SystemAlertChip>>,
-    mut alert_text_query: Query<&mut Text, (Without<StatusText>, Without<ActiveContextChip>, Without<FpsCounterLabel>)>,
+    mut alert_text_query: Query<&mut Text, (Without<StatusText>, Without<ActiveContextChip>, Without<FpsCounterLabel>, Without<BakeProgressBarPercent>)>,
+    mut bake_ui: BakeProgressUiParams,
     mut check_timer: Local<f32>,
     mut cached_warning: Local<Option<(String, bool)>>, // (Message, is_critical)
 ) {
@@ -322,12 +401,33 @@ pub fn update_status_bar(
         }
     }
 
+    // Lightmap Baking Progress Bar & Status Text handling
     if let Some(progress) = lightmap_progress.as_deref() {
-        if progress.is_baking {
-            if let Ok(mut text) = text_query.single_mut() {
-                text.0 = format!("☀️ BAKING LIGHTMAPS ({:.0}%): {}", progress.progress * 100.0, progress.status);
+        if let Ok(mut widget_node) = bake_ui.widget.single_mut() {
+            if progress.is_baking || progress.completion_timer > 0.0 {
+                widget_node.display = Display::Flex;
+                let pct = (progress.progress * 100.0).clamp(0.0, 100.0);
+
+                if let Ok((mut fill_node, mut fill_bg)) = bake_ui.fill.single_mut() {
+                    fill_node.width = Val::Percent(pct);
+                    *fill_bg = BackgroundColor(if progress.is_baking {
+                        ACCENT_CYAN
+                    } else {
+                        ACCENT_EMERALD
+                    });
+                }
+
+                if let Ok(mut pct_text) = bake_ui.pct_text.single_mut() {
+                    pct_text.0 = format!("{:.0}%", pct);
+                }
+
+                if let Ok(mut text) = text_query.single_mut() {
+                    text.0 = progress.status.clone();
+                }
+                return;
+            } else {
+                widget_node.display = Display::None;
             }
-            return;
         }
     }
 
