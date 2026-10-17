@@ -7,6 +7,7 @@ pub mod script_card;
 pub mod transform_card;
 pub mod material_card;
 pub mod active_scripts_card;
+pub mod light_card;
 pub mod dock;
 
 // Re-export all public symbols for backwards compatibility
@@ -17,5 +18,6 @@ pub use script_card::*;
 pub use transform_card::*;
 pub use material_card::*;
 pub use active_scripts_card::*;
+pub use light_card::*;
 pub use dock::*;
 

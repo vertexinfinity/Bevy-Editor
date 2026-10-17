@@ -929,6 +929,7 @@ fn rpc_spawn_primitive(world: &mut World, params: Option<Value>) -> Result<Value
                         shadow_maps_enabled: true,
                         ..default()
                     },
+                    crate::scene::components::LightBakeMode::Mixed,
                     Transform::from_translation(default_pos),
                 ))
                 .id()
@@ -948,6 +949,7 @@ fn rpc_spawn_primitive(world: &mut World, params: Option<Value>) -> Result<Value
                         shadow_maps_enabled: true,
                         ..default()
                     },
+                    crate::scene::components::LightBakeMode::Mixed,
                     Transform::from_translation(default_pos).looking_at(Vec3::ZERO, Vec3::Y),
                 ))
                 .id()

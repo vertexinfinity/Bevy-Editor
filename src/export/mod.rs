@@ -3,6 +3,7 @@
 pub mod android;
 pub mod ios;
 pub mod linux;
+pub mod macroquad;
 pub mod web;
 pub mod windows;
 
@@ -107,6 +108,8 @@ impl Plugin for ExportPlugin {
         registry.register(linux::LinuxExporter::default());
         registry.register(web::WebExporter::default());
         registry.register(ios::IosExporter::default());
+        registry.register(macroquad::MacroquadExporter { target: macroquad::MacroquadTarget::Desktop });
+        registry.register(macroquad::MacroquadExporter { target: macroquad::MacroquadTarget::Web });
 
         app.insert_resource(registry)
             .init_resource::<ExportStatus>()

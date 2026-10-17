@@ -250,6 +250,7 @@ impl Plugin for AuthorableComponentsPlugin {
             .register_type::<FpsController>()
             .register_type::<OrbitController>()
             .register_type::<RtsController>()
+            .register_type::<LightBakeMode>()
             .add_systems(
                 Update,
                 (
@@ -563,3 +564,28 @@ fn simulate_rts_camera(
         }
     }
 }
+
+/// Illumination mode for DirectionalLight and PointLight entities.
+///
+/// - `Realtime`: Light is skipped during offline baking; evaluated purely dynamically at runtime.
+/// - `Baked`: Light is baked completely into the lightmap (both direct & bounce). Diffuse contribution is disabled on lightmapped meshes.
+/// - `Mixed`: Indirect bounce & ambient occlusion are baked, but direct specular highlights and dynamic shadows are evaluated in real-time.
+#[derive(Component, Reflect, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[reflect(Component, Default)]
+pub enum LightBakeMode {
+    Realtime,
+    Baked,
+    #[default]
+    Mixed,
+}
+
+impl LightBakeMode {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Realtime => "Realtime (Dynamic)",
+            Self::Baked => "Baked (Static GI)",
+            Self::Mixed => "Mixed (Baked GI + Dynamic Spec)",
+        }
+    }
+}
+

@@ -8,6 +8,7 @@ use super::components_card::*;
 use super::script_card::*;
 use super::transform_card::*;
 use super::material_card::*;
+use super::light_card::*;
 use super::active_scripts_card::*;
 pub fn spawn_inspector_panel(mut commands: Commands) {
     let dock_root = commands
@@ -624,10 +625,13 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
         ChildOf(script_body),
     ));
 
-    // E. PBR Material Card
+    // E. Light & Shadows Card
+    spawn_light_card(commands, parent);
+
+    // F. PBR Material Card
     spawn_material_card(commands, parent);
 
-    // F. Active Scripts Monitor Card
+    // G. Active Scripts Monitor Card
     spawn_active_scripts_card(commands, parent);
 
     // G. Add Component Section

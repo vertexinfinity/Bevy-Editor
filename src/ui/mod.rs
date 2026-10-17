@@ -84,6 +84,7 @@ impl Plugin for EditorUiPlugin {
             .init_resource::<hub::ProjectRegistry>()
             .init_resource::<menu::FileMenuState>()
             .init_resource::<menu::BuildMenuState>()
+            .init_resource::<menu::LightmapSettingsMenuState>()
             .init_resource::<menu::ActiveWorkspace>()
             .init_resource::<hierarchy::HierarchyState>()
             .init_resource::<inspector::InspectorState>()
@@ -117,6 +118,7 @@ impl Plugin for EditorUiPlugin {
             .add_message::<inspector::ScriptPropAction>()
             .add_message::<inspector::TransformSetAxisAction>()
             .add_message::<inspector::MaterialNudgeAction>()
+            .add_message::<inspector::LightModeAction>()
             .add_message::<inspector::ToggleScriptEnabledAction>()
             .add_message::<inspector::SelectScriptEntityAction>()
             .add_message::<panel::TogglePanelMessage>()
@@ -181,6 +183,8 @@ impl Plugin for EditorUiPlugin {
                     inspector::handle_add_component_actions,
                     inspector::handle_script_prop_actions,
                     inspector::handle_material_nudges,
+                    inspector::update_light_card,
+                    inspector::handle_light_mode_actions,
                     inspector::handle_transform_text_input,
                     inspector::update_active_scripts_panel,
                     inspector::handle_toggle_script_enabled,

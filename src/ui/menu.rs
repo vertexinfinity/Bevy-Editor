@@ -34,8 +34,13 @@ pub enum MenuAction {
     BuildLinux,
     BuildWeb,
     BuildIos,
+    BuildMacroquadDesktop,
+    BuildMacroquadWeb,
     BakeLightmaps,
     ToggleLightmapBackend,
+    ToggleLightmapSettingsMenu,
+    SetLightmapRes(u32),
+    SetLightmapSamples(u32),
 }
 
 #[derive(Message, Clone, Copy, Debug)]
@@ -96,6 +101,12 @@ pub struct BuildMenuState(pub bool);
 
 #[derive(Component)]
 pub struct BuildMenuPanel;
+
+#[derive(Resource, Default)]
+pub struct LightmapSettingsMenuState(pub bool);
+
+#[derive(Component)]
+pub struct LightmapSettingsPanel;
 
 /// Spawns the top unified header and menu bar.
 pub fn spawn_menu_bar(mut commands: Commands, current_ws: Res<ActiveWorkspace>) {
@@ -475,6 +486,90 @@ pub fn spawn_menu_bar(mut commands: Commands, current_ws: Res<ActiveWorkspace>) 
         ChildOf(bake_button),
     ));
 
+    // Lightmap Settings Gear Button
+    let settings_btn = commands
+        .spawn((
+            EditorInternal,
+            MenuAction::ToggleLightmapSettingsMenu,
+            Node {
+                position_type: PositionType::Relative,
+                padding: UiRect::axes(px(6), px(3)),
+                border: UiRect::all(px(1)),
+                border_radius: radius_button(),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(BG_INPUT),
+            BorderColor::all(BORDER_SUBTLE),
+            ChildOf(right_group),
+        ))
+        .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_HOVER);
+            }
+        })
+        .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_INPUT);
+            }
+        })
+        .observe(|click: On<PointerClick>, query: Query<&MenuAction>, mut writer: MessageWriter<MenuActionMessage>| {
+            if click.button == PointerButton::Primary {
+                if let Ok(action) = query.get(click.entity) {
+                    writer.write(MenuActionMessage(*action));
+                }
+            }
+        })
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new("⚙️"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(11.0),
+            ..default()
+        },
+        TextColor(TEXT_PRIMARY),
+        ChildOf(settings_btn),
+    ));
+
+    // Lightmap Settings Popup Panel
+    let settings_menu = commands
+        .spawn((
+            EditorInternal,
+            LightmapSettingsPanel,
+            GlobalZIndex(150),
+            Node {
+                position_type: PositionType::Absolute,
+                top: px(32),
+                right: px(0),
+                width: px(160),
+                padding: UiRect::all(px(6)),
+                flex_direction: FlexDirection::Column,
+                row_gap: px(3),
+                display: Display::None,
+                border: UiRect::all(px(1)),
+                border_radius: radius_panel(),
+                ..default()
+            },
+            BackgroundColor(BG_CARD),
+            BorderColor::all(BORDER_SUBTLE),
+            ChildOf(settings_btn),
+        ))
+        .id();
+
+    spawn_menu_section_header(&mut commands, settings_menu, "RESOLUTION");
+    for (label, res) in [("256 (Draft)", 256), ("512 (Standard)", 512), ("1024 (High)", 1024)] {
+        spawn_build_target_button(&mut commands, settings_menu, label, MenuAction::SetLightmapRes(res));
+    }
+
+    spawn_menu_section_header(&mut commands, settings_menu, "QUALITY (SPP)");
+    for (label, spp) in [("16 Samples (Fast)", 16), ("48 Samples (Balanced)", 48), ("128 Samples (Fine)", 128)] {
+        spawn_build_target_button(&mut commands, settings_menu, label, MenuAction::SetLightmapSamples(spp));
+    }
+
     let build_button = commands
         .spawn((
             EditorInternal,
@@ -548,12 +643,21 @@ pub fn spawn_menu_bar(mut commands: Commands, current_ws: Res<ActiveWorkspace>) 
         ))
         .id();
 
+    spawn_menu_section_header(&mut commands, build_menu, "BEVY STANDALONE");
     for (label, action) in [
-        ("Windows", MenuAction::BuildWindows),
-        ("Linux", MenuAction::BuildLinux),
-        ("Android", MenuAction::BuildAndroid),
-        ("Web", MenuAction::BuildWeb),
-        ("iOS", MenuAction::BuildIos),
+        ("Windows (.exe)", MenuAction::BuildWindows),
+        ("Linux (ELF)", MenuAction::BuildLinux),
+        ("Web (WASM)", MenuAction::BuildWeb),
+        ("Android (APK)", MenuAction::BuildAndroid),
+        ("iOS (Xcode)", MenuAction::BuildIos),
+    ] {
+        spawn_build_target_button(&mut commands, build_menu, label, action);
+    }
+
+    spawn_menu_section_header(&mut commands, build_menu, "MICRO-RUNNER (~2MB)");
+    for (label, action) in [
+        ("Web WASM (~1MB)", MenuAction::BuildMacroquadWeb),
+        ("Desktop (.exe) (~2MB)", MenuAction::BuildMacroquadDesktop),
     ] {
         spawn_build_target_button(&mut commands, build_menu, label, action);
     }
@@ -695,6 +799,34 @@ pub fn sync_lightmap_backend_label(
     }
 }
 
+fn spawn_menu_section_header(commands: &mut Commands, parent: Entity, label: &'static str) {
+    let header = commands
+        .spawn((
+            EditorInternal,
+            Node {
+                width: percent(100.0),
+                padding: UiRect::axes(px(6), px(3)),
+                margin: UiRect::top(px(4)),
+                ..default()
+            },
+            ChildOf(parent),
+        ))
+        .id();
+
+    commands.spawn((
+        EditorInternal,
+        Pickable::IGNORE,
+        Text::new(label),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(9.5),
+            weight: FontWeight::BOLD,
+            ..default()
+        },
+        TextColor(ACCENT_CYAN),
+        ChildOf(header),
+    ));
+}
+
 fn spawn_build_target_button(
     commands: &mut Commands,
     parent: Entity,
@@ -818,14 +950,21 @@ fn spawn_dropdown_separator(commands: &mut Commands, parent: Entity) {
 pub fn update_dropdown_menus_visibility(
     file_state: Res<FileMenuState>,
     build_state: Res<BuildMenuState>,
-    mut file_panels: Query<&mut Node, (With<FileMenuPanel>, Without<BuildMenuPanel>)>,
-    mut build_panels: Query<&mut Node, (With<BuildMenuPanel>, Without<FileMenuPanel>)>,
+    lightmap_state: Option<Res<LightmapSettingsMenuState>>,
+    mut file_panels: Query<&mut Node, (With<FileMenuPanel>, Without<BuildMenuPanel>, Without<LightmapSettingsPanel>)>,
+    mut build_panels: Query<&mut Node, (With<BuildMenuPanel>, Without<FileMenuPanel>, Without<LightmapSettingsPanel>)>,
+    mut lightmap_panels: Query<&mut Node, (With<LightmapSettingsPanel>, Without<FileMenuPanel>, Without<BuildMenuPanel>)>,
 ) {
     for mut node in &mut file_panels {
         node.display = if file_state.0 { Display::Flex } else { Display::None };
     }
     for mut node in &mut build_panels {
         node.display = if build_state.0 { Display::Flex } else { Display::None };
+    }
+    if let Some(lightmap_state) = lightmap_state {
+        for mut node in &mut lightmap_panels {
+            node.display = if lightmap_state.0 { Display::Flex } else { Display::None };
+        }
     }
 }
 
@@ -1096,6 +1235,12 @@ fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>) {{
             MenuAction::BuildIos => {
                 trigger_export(world, "ios");
             }
+            MenuAction::BuildMacroquadDesktop => {
+                trigger_export(world, "macroquad_desktop");
+            }
+            MenuAction::BuildMacroquadWeb => {
+                trigger_export(world, "macroquad_web");
+            }
             MenuAction::BakeLightmaps => {
                 info!("Triggering lightmap bake request from Menu Bar");
                 world.write_message(bevylite_lightmapper::BakeLightmapRequest::default());
@@ -1107,6 +1252,29 @@ fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>) {{
                         bevylite_lightmapper::LightmapBackend::Cpu => bevylite_lightmapper::LightmapBackend::Gpu,
                     };
                     info!("Switched lightmap bake backend to {}", config.backend.label());
+                }
+            }
+            MenuAction::ToggleLightmapSettingsMenu => {
+                if let Some(mut state) = world.get_resource_mut::<LightmapSettingsMenuState>() {
+                    state.0 = !state.0;
+                }
+            }
+            MenuAction::SetLightmapRes(res) => {
+                if let Some(mut config) = world.get_resource_mut::<bevylite_lightmapper::LightmapConfig>() {
+                    config.resolution = res;
+                    info!("Set lightmap bake resolution to {}", res);
+                }
+                if let Some(mut state) = world.get_resource_mut::<LightmapSettingsMenuState>() {
+                    state.0 = false;
+                }
+            }
+            MenuAction::SetLightmapSamples(samples) => {
+                if let Some(mut config) = world.get_resource_mut::<bevylite_lightmapper::LightmapConfig>() {
+                    config.samples_per_pixel = samples;
+                    info!("Set lightmap bake samples per pixel to {}", samples);
+                }
+                if let Some(mut state) = world.get_resource_mut::<LightmapSettingsMenuState>() {
+                    state.0 = false;
                 }
             }
         }
