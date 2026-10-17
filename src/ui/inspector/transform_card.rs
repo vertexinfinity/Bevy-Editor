@@ -404,18 +404,18 @@ pub fn update_clean_transform_labels(
     state: Res<InspectorState>,
     text_edit: Res<TransformTextEditState>,
     entities: Query<(
-        Option<&Name>,
-        Option<&Transform>,
-        Option<&GlobalTransform>,
-        Option<&ScriptComponent>,
-        Option<&SpinAnimation>,
-        Option<&Velocity>,
-        Option<&GameplayTag>,
-        Option<&Mesh3d>,
-        Option<&DirectionalLight>,
-        Option<&PointLight>,
-        Option<&Visibility>,
-        Option<&MeshMaterial3d<StandardMaterial>>,
+        Option<Ref<Name>>,
+        Option<Ref<Transform>>,
+        Option<Ref<GlobalTransform>>,
+        Option<Ref<ScriptComponent>>,
+        Option<Ref<SpinAnimation>>,
+        Option<Ref<Velocity>>,
+        Option<Ref<GameplayTag>>,
+        Option<Ref<Mesh3d>>,
+        Option<Ref<DirectionalLight>>,
+        Option<Ref<PointLight>>,
+        Option<Ref<Visibility>>,
+        Option<Ref<MeshMaterial3d<StandardMaterial>>>,
     )>,
     materials: Res<Assets<StandardMaterial>>,
     mut name_label: Query<&mut Text, (With<SelectedEntityLabel>, Without<TransformAxisValue>, Without<ComponentsBadgesLabel>, Without<ScriptPropsLabel>, Without<MaterialInfoLabel>)>,
@@ -432,12 +432,14 @@ pub fn update_clean_transform_labels(
     let Ok(mut script_txt) = script_label.single_mut() else { return };
 
     let Some(selected) = selection.0 else {
-        name_txt.0 = "Selected: None (Click object in scene)".to_string();
-        set_transform_axis_values(&mut axis_labels, Vec3::ZERO, Vec3::ZERO, Vec3::ONE, &text_edit);
-        badges_txt.0 = "None".to_string();
-        script_txt.0 = "No entity selected".to_string();
-        if let Ok(mut mat_card) = mat_card_query.single_mut() {
-            mat_card.display = Display::None;
+        if selection.is_changed() {
+            name_txt.0 = "Selected: None (Click object in scene)".to_string();
+            set_transform_axis_values(&mut axis_labels, Vec3::ZERO, Vec3::ZERO, Vec3::ONE, &text_edit);
+            badges_txt.0 = "None".to_string();
+            script_txt.0 = "No entity selected".to_string();
+            if let Ok(mut mat_card) = mat_card_query.single_mut() {
+                mat_card.display = Display::None;
+            }
         }
         return;
     };
@@ -452,7 +454,29 @@ pub fn update_clean_transform_labels(
         return;
     };
 
-    let is_hidden = vis == Some(&Visibility::Hidden);
+    // Fast O(1) dirty check: if nothing relevant changed, skip all label formatting & UI updates
+    let entity_dirty = selection.is_changed()
+        || state.is_changed()
+        || text_edit.is_changed()
+        || materials.is_changed()
+        || name.as_ref().map_or(false, |r| r.is_changed())
+        || transform.as_ref().map_or(false, |r| r.is_changed())
+        || global_transform.as_ref().map_or(false, |r| r.is_changed())
+        || script.as_ref().map_or(false, |r| r.is_changed())
+        || spin.as_ref().map_or(false, |r| r.is_changed())
+        || vel.as_ref().map_or(false, |r| r.is_changed())
+        || tag.as_ref().map_or(false, |r| r.is_changed())
+        || mesh.as_ref().map_or(false, |r| r.is_changed())
+        || dir_light.as_ref().map_or(false, |r| r.is_changed())
+        || pt_light.as_ref().map_or(false, |r| r.is_changed())
+        || vis.as_ref().map_or(false, |r| r.is_changed())
+        || mat_handle.as_ref().map_or(false, |r| r.is_changed());
+
+    if !entity_dirty {
+        return;
+    }
+
+    let is_hidden = vis.as_deref() == Some(&Visibility::Hidden);
     let type_desc = if mesh.is_some() {
         "Mesh Prop"
     } else if dir_light.is_some() || pt_light.is_some() {
