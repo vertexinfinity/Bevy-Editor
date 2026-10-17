@@ -21,8 +21,7 @@ Pre-compiled standalone packages are automatically built for Windows, Linux, and
 | :--- | :--- | :--- |
 | 🪟 **Windows** | `x86_64-pc-windows-msvc` | `.zip` (Executable + bundled assets) |
 | 🐧 **Linux** | `x86_64-unknown-linux-gnu` | `.tar.gz` (Standalone ELF + assets) |
-| 🍎 **macOS (Apple Silicon)** | `aarch64-apple-darwin` (M1/M2/M3/M4) | `.tar.gz` |
-| 🍏 **macOS (Intel)** | `x86_64-apple-darwin` | `.tar.gz` |
+| 🍎 **macOS (Apple Silicon)** | `aarch64-apple-darwin` (M-Series) | `.tar.gz` |
 
 ---
 
