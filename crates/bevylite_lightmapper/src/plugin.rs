@@ -202,6 +202,8 @@ pub fn poll_active_bake_job(
     mut active_lightmap: ResMut<ActiveLightmap>,
     mut images: ResMut<Assets<Image>>,
     render_device: Option<Res<RenderDevice>>,
+    mut meshes: Query<&mut Mesh3d>,
+    mut materials: Query<&mut MeshMaterial3d<StandardMaterial>>,
 ) {
     // Tick down completion banner timer
     if progress.completion_timer > 0.0 {
@@ -247,6 +249,8 @@ pub fn poll_active_bake_job(
                             config.resolution,
                             LightmapBackend::Gpu,
                             baked_bytes,
+                            &mut meshes,
+                            &mut materials,
                         );
                         progress.is_baking = false;
                         progress.progress = 1.0;
@@ -302,6 +306,8 @@ pub fn poll_active_bake_job(
                         config.resolution,
                         LightmapBackend::Cpu,
                         baked_bytes,
+                        &mut meshes,
+                        &mut materials,
                     );
                     progress.is_baking = false;
                     progress.progress = 1.0;
@@ -330,6 +336,8 @@ fn apply_baked_lightmap(
     resolution: u32,
     backend: LightmapBackend,
     baked_bytes: Vec<u8>,
+    meshes: &mut Query<&mut Mesh3d>,
+    materials: &mut Query<&mut MeshMaterial3d<StandardMaterial>>,
 ) {
     let image = Image::new_fill(
         Extent3d {
@@ -349,6 +357,17 @@ fn apply_baked_lightmap(
     active_lightmap.backend_used = Some(backend);
 
     for target in &scene.meshes {
+        // Force Bevy's PBR pipeline cache to mark this entity dirty for specialization.
+        // Bevy checks `Changed<Mesh3d>` and `Changed<MeshMaterial3d>` in `check_entities_needing_specialization`.
+        // Without this, the shadow pass / prepass continues to use the un-lightmapped pipeline layout
+        // while the mesh bind group binds the lightmap layout, causing a WGPU bind group layout mismatch panic.
+        if let Ok(mut mesh) = meshes.get_mut(target.entity) {
+            mesh.set_changed();
+        }
+        if let Ok(mut mat) = materials.get_mut(target.entity) {
+            mat.set_changed();
+        }
+
         commands.entity(target.entity).insert(bevy::pbr::Lightmap {
             image: image_handle.clone(),
             uv_rect: Rect::new(0.0, 0.0, 1.0, 1.0),
