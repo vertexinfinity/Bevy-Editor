@@ -7,7 +7,10 @@ use crate::geometry::{BakeScene, GpuLight, LightmapTriangle, LightmapVertex, Sce
 
 /// Extracts all static meshes and scene lights into a BakeScene structure.
 pub fn extract_bake_scene(
-    mesh_query: &Query<(Entity, &Mesh3d, &GlobalTransform, Option<&Name>)>,
+    mesh_query: &Query<
+        (Entity, &Mesh3d, &GlobalTransform, Option<&Name>),
+        With<MeshMaterial3d<StandardMaterial>>,
+    >,
     meshes: &Assets<Mesh>,
     dir_light_query: &Query<(&DirectionalLight, &GlobalTransform)>,
     point_light_query: &Query<(&PointLight, &GlobalTransform)>,
@@ -53,8 +56,20 @@ pub fn extract_bake_scene(
         });
     }
 
-    // 2. Extract Meshes & Triangles
-    for (entity, mesh_handle, global_transform, name) in mesh_query.iter() {
+    // 2. Extract Meshes & Triangles (skip unnamed internal gizmo meshes if named scene entities exist)
+    let has_named_meshes = mesh_query.iter().any(|(_, _, _, name)| name.is_some());
+    let candidates: Vec<_> = mesh_query
+        .iter()
+        .filter(|(_, mesh_handle, _, name)| {
+            (!has_named_meshes || name.is_some()) && meshes.contains(&mesh_handle.0)
+        })
+        .collect();
+
+    let total_meshes = candidates.len().max(1);
+    let cols = (total_meshes as f32).sqrt().ceil().max(1.0) as u32;
+    let rows = ((total_meshes as u32 + cols - 1) / cols).max(1);
+
+    for (entity, mesh_handle, global_transform, name) in candidates {
         let Some(mesh) = meshes.get(&mesh_handle.0) else {
             continue;
         };
@@ -86,10 +101,24 @@ pub fn extract_bake_scene(
         let mesh_idx = scene.meshes.len() as u32;
         let tri_start = scene.triangles.len();
 
+        let uv_rect = if total_meshes == 1 {
+            Rect::new(0.0, 0.0, 1.0, 1.0)
+        } else {
+            let col = mesh_idx % cols;
+            let row = mesh_idx / cols;
+            let pad_x = 0.02 / cols as f32;
+            let pad_y = 0.02 / rows as f32;
+            let min_x = col as f32 / cols as f32 + pad_x;
+            let min_y = row as f32 / rows as f32 + pad_y;
+            let max_x = (col + 1) as f32 / cols as f32 - pad_x;
+            let max_y = (row + 1) as f32 / rows as f32 - pad_y;
+            Rect::new(min_x, min_y, max_x, max_y)
+        };
+
         let mut uv_min = Vec2::splat(1.0);
         let mut uv_max = Vec2::splat(0.0);
 
-        // Helper to transform vertex to world space
+        // Helper to transform vertex to world space and atlas UV space
         let transform_vertex = |idx: usize| -> LightmapVertex {
             let local_p = Vec3::from(positions[idx]);
             let world_p = model_matrix.transform_point3(local_p);
@@ -97,13 +126,14 @@ pub fn extract_bake_scene(
             let local_n = Vec3::from(normals[idx]);
             let world_n = (normal_matrix * local_n).normalize_or_zero();
 
-            let uv = uvs[idx];
+            let raw_uv = Vec2::from(uvs[idx]).clamp(Vec2::ZERO, Vec2::ONE);
+            let atlas_uv = uv_rect.min + raw_uv * (uv_rect.max - uv_rect.min);
             LightmapVertex {
                 position: world_p.to_array(),
                 _pad0: 0.0,
                 normal: world_n.to_array(),
                 _pad1: 0.0,
-                uv,
+                uv: atlas_uv.to_array(),
                 _pad2: [0.0; 2],
             }
         };
@@ -150,6 +180,7 @@ pub fn extract_bake_scene(
             triangle_count: tri_count,
             uv_min,
             uv_max,
+            uv_rect,
         });
     }
 

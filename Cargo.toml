@@ -52,6 +52,7 @@ bevy = { git = "https://github.com/bevyengine/bevy", branch = "main", default-fe
     "bevy_ui_render",
     "bevy_camera_controller",
     "free_camera",
+    "default_font",
     "system_font_discovery",
     "serialize",
     "debug",

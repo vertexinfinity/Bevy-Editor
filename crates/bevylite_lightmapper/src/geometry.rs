@@ -101,6 +101,7 @@ pub struct SceneMeshTarget {
     pub triangle_count: usize,
     pub uv_min: Vec2,
     pub uv_max: Vec2,
+    pub uv_rect: Rect,
 }
 
 /// Complete scene geometry ready for lightmapping.

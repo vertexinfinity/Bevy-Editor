@@ -84,7 +84,32 @@ impl Plugin for BevyliteLightmapperPlugin {
             .init_resource::<LightmapBakeProgress>()
             .init_resource::<ActiveLightmap>()
             .add_message::<BakeLightmapRequest>()
-            .add_systems(Update, (handle_bake_requests, poll_active_bake_job));
+            .add_systems(
+                Update,
+                (
+                    ensure_new_meshes_have_uv1,
+                    handle_bake_requests,
+                    poll_active_bake_job,
+                ),
+            );
+    }
+}
+
+/// Automatically ensures any newly spawned PBR mesh has `Mesh::ATTRIBUTE_UV_1` on Frame 0
+/// so its GPU vertex buffer layout never has to reallocate when `Lightmap` is attached later.
+pub fn ensure_new_meshes_have_uv1(
+    new_meshes: Query<&Mesh3d, (Added<Mesh3d>, With<MeshMaterial3d<StandardMaterial>>)>,
+    mut meshes: ResMut<Assets<Mesh>>,
+) {
+    for mesh_handle in new_meshes.iter() {
+        let needs_uv1 = meshes
+            .get(&mesh_handle.0)
+            .is_some_and(|m| !m.contains_attribute(Mesh::ATTRIBUTE_UV_1));
+        if needs_uv1 {
+            if let Some(mut mesh_asset) = meshes.get_mut(&mesh_handle.0) {
+                ensure_mesh_has_uv1(&mut mesh_asset);
+            }
+        }
     }
 }
 
@@ -94,8 +119,11 @@ pub fn handle_bake_requests(
     mut requests: MessageReader<BakeLightmapRequest>,
     config: Res<LightmapConfig>,
     mut progress: ResMut<LightmapBakeProgress>,
-    mesh_query: Query<(Entity, &Mesh3d, &GlobalTransform, Option<&Name>)>,
-    meshes: Res<Assets<Mesh>>,
+    mesh_query: Query<
+        (Entity, &Mesh3d, &GlobalTransform, Option<&Name>),
+        With<MeshMaterial3d<StandardMaterial>>,
+    >,
+    mut meshes: ResMut<Assets<Mesh>>,
     dir_lights: Query<(&DirectionalLight, &GlobalTransform)>,
     point_lights: Query<(&PointLight, &GlobalTransform)>,
     render_device: Option<Res<RenderDevice>>,
@@ -113,6 +141,19 @@ pub fn handle_bake_requests(
         progress.progress = 0.05;
         progress.completion_timer = 0.0;
         progress.status = format!("Extracting scene geometry for {} baking...", active_cfg.backend.label());
+
+        // Ensure all target meshes have secondary UV channel (`ATTRIBUTE_UV_1`) before baking starts
+        // so Bevy's RenderMesh vertex buffer layout includes `VERTEX_UVS_B` (`in.uv_b`) ahead of completion.
+        for (_entity, mesh_handle, _, _) in mesh_query.iter() {
+            let needs_uv1 = meshes
+                .get(&mesh_handle.0)
+                .is_some_and(|m| !m.contains_attribute(Mesh::ATTRIBUTE_UV_1));
+            if needs_uv1 {
+                if let Some(mut mesh_asset) = meshes.get_mut(&mesh_handle.0) {
+                    ensure_mesh_has_uv1(&mut mesh_asset);
+                }
+            }
+        }
 
         let scene: BakeScene = extract_bake_scene(&mesh_query, &meshes, &dir_lights, &point_lights);
         info!(
@@ -201,6 +242,8 @@ pub fn poll_active_bake_job(
     mut progress: ResMut<LightmapBakeProgress>,
     mut active_lightmap: ResMut<ActiveLightmap>,
     mut images: ResMut<Assets<Image>>,
+    mut mesh_assets: ResMut<Assets<Mesh>>,
+    mut material_assets: ResMut<Assets<StandardMaterial>>,
     render_device: Option<Res<RenderDevice>>,
     mut meshes: Query<&mut Mesh3d>,
     mut materials: Query<&mut MeshMaterial3d<StandardMaterial>>,
@@ -245,6 +288,8 @@ pub fn poll_active_bake_job(
                             &mut commands,
                             &mut active_lightmap,
                             &mut images,
+                            &mut mesh_assets,
+                            &mut material_assets,
                             &scene,
                             config.resolution,
                             LightmapBackend::Gpu,
@@ -302,6 +347,8 @@ pub fn poll_active_bake_job(
                         &mut commands,
                         &mut active_lightmap,
                         &mut images,
+                        &mut mesh_assets,
+                        &mut material_assets,
                         &scene,
                         config.resolution,
                         LightmapBackend::Cpu,
@@ -332,6 +379,8 @@ fn apply_baked_lightmap(
     commands: &mut Commands,
     active_lightmap: &mut ResMut<ActiveLightmap>,
     images: &mut ResMut<Assets<Image>>,
+    mesh_assets: &mut ResMut<Assets<Mesh>>,
+    material_assets: &mut ResMut<Assets<StandardMaterial>>,
     scene: &BakeScene,
     resolution: u32,
     backend: LightmapBackend,
@@ -339,7 +388,7 @@ fn apply_baked_lightmap(
     meshes: &mut Query<&mut Mesh3d>,
     materials: &mut Query<&mut MeshMaterial3d<StandardMaterial>>,
 ) {
-    let image = Image::new_fill(
+    let mut image = Image::new_fill(
         Extent3d {
             width: resolution,
             height: resolution,
@@ -350,6 +399,7 @@ fn apply_baked_lightmap(
         TextureFormat::Rgba8UnormSrgb,
         RenderAssetUsages::all(),
     );
+    image.sampler = bevy::image::ImageSampler::linear();
 
     let image_handle = images.add(image);
     active_lightmap.handle = Some(image_handle.clone());
@@ -357,21 +407,51 @@ fn apply_baked_lightmap(
     active_lightmap.backend_used = Some(backend);
 
     for target in &scene.meshes {
-        // Force Bevy's PBR pipeline cache to mark this entity dirty for specialization.
-        // Bevy checks `Changed<Mesh3d>` and `Changed<MeshMaterial3d>` in `check_entities_needing_specialization`.
-        // Without this, the shadow pass / prepass continues to use the un-lightmapped pipeline layout
-        // while the mesh bind group binds the lightmap layout, causing a WGPU bind group layout mismatch panic.
-        if let Ok(mut mesh) = meshes.get_mut(target.entity) {
-            mesh.set_changed();
+        // 1. Ensure the Mesh asset has `Mesh::ATTRIBUTE_UV_1` so Bevy's PBR shader defines `VERTEX_UVS_B`.
+        // Only call `get_mut` when `ATTRIBUTE_UV_1` is missing so we don't emit spurious Mesh asset modification events.
+        if let Ok(mut mesh_handle) = meshes.get_mut(target.entity) {
+            let needs_uv1 = mesh_assets
+                .get(&mesh_handle.0)
+                .is_some_and(|m| !m.contains_attribute(Mesh::ATTRIBUTE_UV_1));
+            if needs_uv1 {
+                if let Some(mut mesh_asset) = mesh_assets.get_mut(&mesh_handle.0) {
+                    ensure_mesh_has_uv1(&mut mesh_asset);
+                }
+            }
+            mesh_handle.set_changed();
         }
+        // 2. Set `lightmap_exposure` on the StandardMaterial to match Bevy's physical camera exposure (EV100 = 9.7).
         if let Ok(mut mat) = materials.get_mut(target.entity) {
+            if let Some(mut mat_asset) = material_assets.get_mut(&mat.0) {
+                mat_asset.lightmap_exposure = 600.0;
+            }
             mat.set_changed();
         }
 
         commands.entity(target.entity).insert(bevy::pbr::Lightmap {
             image: image_handle.clone(),
-            uv_rect: Rect::new(0.0, 0.0, 1.0, 1.0),
+            uv_rect: target.uv_rect,
             bicubic_sampling: true,
         });
+    }
+}
+
+fn ensure_mesh_has_uv1(mesh_asset: &mut Mesh) {
+    if !mesh_asset.contains_attribute(Mesh::ATTRIBUTE_UV_1) {
+        let uv1_data = if let Some(bevy::render::mesh::VertexAttributeValues::Float32x2(uv0)) =
+            mesh_asset.attribute(Mesh::ATTRIBUTE_UV_0)
+        {
+            Some(uv0.clone())
+        } else if let Some(bevy::render::mesh::VertexAttributeValues::Float32x3(pos)) =
+            mesh_asset.attribute(Mesh::ATTRIBUTE_POSITION)
+        {
+            Some(vec![[0.0, 0.0]; pos.len()])
+        } else {
+            None
+        };
+
+        if let Some(uv1) = uv1_data {
+            mesh_asset.insert_attribute(Mesh::ATTRIBUTE_UV_1, uv1);
+        }
     }
 }

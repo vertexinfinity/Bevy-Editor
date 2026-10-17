@@ -154,6 +154,7 @@ fn test_end_to_end_cpu_lightmap_baking() {
         triangle_count: 2,
         uv_min: Vec2::ZERO,
         uv_max: Vec2::ONE,
+        uv_rect: Rect::new(0.0, 0.0, 1.0, 1.0),
     });
 
     let config = LightmapConfig {

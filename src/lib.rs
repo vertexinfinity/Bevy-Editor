@@ -51,6 +51,12 @@ pub fn run_editor() {
                     ..default()
                 })
                 .set(AssetPlugin {
+                    file_path: std::env::current_dir()
+                        .ok()
+                        .map(|d| d.join("assets"))
+                        .filter(|p| p.is_dir())
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_else(|| "assets".to_string()),
                     unapproved_path_mode: UnapprovedPathMode::Allow,
                     ..default()
                 }),
