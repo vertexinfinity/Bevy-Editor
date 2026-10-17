@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use bevy::ecs::message::Message;
+use bevy::picking::{events::{PointerClick, PointerOut, PointerOver}, pointer::PointerButton};
 use bevy::prelude::*;
 
 /// Context provided to an [`Exporter`] when generating a build.
@@ -129,7 +130,6 @@ impl Plugin for ExportPlugin {
                     handle_export_requests,
                     poll_export_job,
                     update_export_progress_widget,
-                    handle_export_action_clicks,
                 ).chain(),
             );
     }
@@ -225,7 +225,6 @@ fn spawn_export_progress_widget(mut commands: Commands) {
         .spawn((
             crate::scene::EditorInternal,
             OpenFolderButton,
-            Button,
             Node {
                 padding: UiRect::axes(px(8), px(4)),
                 border_radius: BorderRadius::all(px(4)),
@@ -238,6 +237,25 @@ fn spawn_export_progress_widget(mut commands: Commands) {
             BorderColor::all(BORDER_SUBTLE),
             ChildOf(actions_row),
         ))
+        .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_HOVER);
+            }
+        })
+        .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_INPUT);
+            }
+        })
+        .observe(|click: On<PointerClick>, job: Res<ExportJob>| {
+            if click.button == PointerButton::Primary {
+                if let Some((_, ok, _, Some(artifact_path), _)) = &job.finished {
+                    if *ok {
+                        reveal_in_file_manager(artifact_path);
+                    }
+                }
+            }
+        })
         .id();
 
     commands.spawn((
@@ -254,7 +272,6 @@ fn spawn_export_progress_widget(mut commands: Commands) {
         .spawn((
             crate::scene::EditorInternal,
             OpenZipButton,
-            Button,
             Node {
                 padding: UiRect::axes(px(8), px(4)),
                 border_radius: BorderRadius::all(px(4)),
@@ -268,6 +285,25 @@ fn spawn_export_progress_widget(mut commands: Commands) {
             BorderColor::all(BORDER_SUBTLE),
             ChildOf(actions_row),
         ))
+        .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_HOVER);
+            }
+        })
+        .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
+            if let Ok(mut bg) = bg.get_mut(trigger.entity) {
+                *bg = BackgroundColor(BG_INPUT);
+            }
+        })
+        .observe(|click: On<PointerClick>, job: Res<ExportJob>| {
+            if click.button == PointerButton::Primary {
+                if let Some((_, ok, _, _, Some(zip_path))) = &job.finished {
+                    if *ok {
+                        reveal_in_file_manager(zip_path);
+                    }
+                }
+            }
+        })
         .id();
 
     commands.spawn((
@@ -420,28 +456,6 @@ fn update_export_progress_widget(
         root.display = Display::None;
         if let Ok(mut row) = actions_row.single_mut() {
             row.display = Display::None;
-        }
-    }
-}
-
-/// Helper system that opens the file explorer when clicking "Open Folder" or "Locate ZIP".
-fn handle_export_action_clicks(
-    job: Res<ExportJob>,
-    folder_clicks: Query<&bevy::picking::events::Pointer<bevy::picking::events::PointerClick>, With<OpenFolderButton>>,
-    zip_clicks: Query<&bevy::picking::events::Pointer<bevy::picking::events::PointerClick>, With<OpenZipButton>>,
-) {
-    let Some((_, ok, _, artifact_path, zip_path)) = &job.finished else { return };
-    if !*ok { return };
-
-    if !folder_clicks.is_empty() {
-        if let Some(path) = artifact_path {
-            reveal_in_file_manager(path);
-        }
-    }
-
-    if !zip_clicks.is_empty() {
-        if let Some(path) = zip_path {
-            reveal_in_file_manager(path);
         }
     }
 }

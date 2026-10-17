@@ -190,6 +190,7 @@ impl Exporter for WebExporter {
                     "Web shell scaffolded at {}. Run `rustup target add wasm32-unknown-unknown` to enable direct wasm compilation.",
                     export_dir.display()
                 ),
+                zip_artifact: None,
             });
         }
 

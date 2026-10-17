@@ -84,6 +84,7 @@ impl Exporter for AndroidExporter {
             Ok(ExportResult {
                 primary_artifact: export_dir.clone(),
                 message: format!("Android APK successfully built for target aarch64-linux-android in {:?}", export_dir.join("target")),
+                zip_artifact: None,
             })
         } else {
             // Scaffold the Android Gradle project based on Bevy mobile template
