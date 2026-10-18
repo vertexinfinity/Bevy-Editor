@@ -107,6 +107,19 @@ impl ProjectRegistry {
             }
         }
 
+        // The bundled sample is available on a fresh checkout without a local registry file.
+        let sample = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("samples/editor_showcase");
+        if sample.join("Cargo.toml").is_file() {
+            let sample_path = sample.to_string_lossy().to_string();
+            if !projects.iter().any(|entry| Path::new(&entry.path) == sample) {
+                projects.push(UserProjectEntry {
+                    name: "Editor Showcase".to_string(),
+                    path: sample_path,
+                    last_opened: "Bundled sample".to_string(),
+                    template: "Editor Showcase / QA".to_string(),
+                });
+            }
+        }
         Self { projects }
     }
 
@@ -399,7 +412,10 @@ pub fn spawn_project_hub(mut commands: Commands, registry: Res<ProjectRegistry>)
              mut active_project: ResMut<ActiveProject>,
              mut registry: ResMut<ProjectRegistry>,
              mut commands: Commands,
-             asset_server: Res<AssetServer>| {
+             asset_server: Res<AssetServer>,
+             mut meshes: ResMut<Assets<Mesh>>,
+             mut materials: ResMut<Assets<StandardMaterial>>,
+             existing_scene_entities: Query<Entity, With<crate::scene::SceneEntity>>| {
                 if click.button == PointerButton::Primary {
                     if let Some(folder) = rfd::FileDialog::new()
                         .set_title("Open Bevy Game Project (Folder with Cargo.toml)")
@@ -411,8 +427,18 @@ pub fn spawn_project_hub(mut commands: Commands, registry: Res<ProjectRegistry>)
                                 .and_then(|n| n.to_str())
                                 .unwrap_or("BevyGame")
                                 .to_string();
-                            registry.add_or_update(&folder, &name, "Loaded Project");
+                            let is_showcase = std::fs::read_to_string(folder.join("bevylite.project.json")).ok()
+                                .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
+                                .is_some_and(|manifest| manifest["template"] == "editor_showcase");
+                            registry.add_or_update(&folder, &name, if is_showcase { "Editor Showcase / QA" } else { "Loaded Project" });
                             active_project.set_project_dir(folder.clone());
+
+                            if is_showcase {
+                                for entity in &existing_scene_entities { commands.entity(entity).despawn(); }
+                                crate::scene::primitives::spawn_template_scene(&mut commands, &mut meshes, &mut materials, ProjectTemplateKind::EditorShowcase);
+                                state.set(EditorAppState::InEditor);
+                                return;
+                            }
 
                             let default_scene =
                                 folder.join("assets").join("scenes").join("default_scene.bsn");

@@ -20,12 +20,17 @@ use bevy::{
         settings::{Backends, PowerPreference, RenderCreation, WgpuSettings},
         RenderPlugin,
     },
-    winit::WinitSettings,
 };
 
 /// Launches the visual Bevylite Editor window application.
 pub fn run_editor() {
-    App::new()
+    create_editor_app().run();
+}
+
+/// Build the editor app so examples and integrations can configure startup scenes.
+pub fn create_editor_app() -> App {
+    let mut app = App::new();
+    app
         .add_plugins(
             DefaultPlugins
                 .set(RenderPlugin {
@@ -46,7 +51,7 @@ pub fn run_editor() {
                 .set(WindowPlugin {
                     primary_window: Some(Window {
                         title: "Bevy Editor — Bevylite".to_string(),
-                        resolution: (1600, 900).into(),
+                        resolution: (1280, 720).into(),
                         ..default()
                     }),
                     ..default()
@@ -74,7 +79,10 @@ pub fn run_editor() {
             remote::EditorRemotePlugin::default(),
             bevylite_lightmapper::BevyliteLightmapperPlugin,
         ))
-        .insert_resource(WinitSettings::desktop_app())
+        .add_systems(Startup, |mut windows: Query<&mut Window, With<bevy::window::PrimaryWindow>>| {
+            if let Ok(mut window) = windows.single_mut() { window.set_maximized(true); }
+        })
+        .insert_resource(core::play_mode::editor_winit_settings())
         .insert_resource(bevy::render::error_handler::RenderErrorHandler(|error, main_world, _| {
             if error.description.contains("Surface::configure")
                 || error.description.contains("Invalid surface")
@@ -88,6 +96,6 @@ pub fn run_editor() {
                 main_world.write_message(bevy::app::AppExit::error());
                 bevy::render::error_handler::RenderErrorPolicy::StopRendering
             }
-        }))
-        .run();
+        }));
+    app
 }

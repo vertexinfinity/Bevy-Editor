@@ -62,14 +62,16 @@ impl CardBuilder {
                 CardRoot,
                 Node {
                     flex_direction: FlexDirection::Column,
-                    padding: UiRect::all(SPACE_COMPACT),
-                    row_gap: px(6),
-                    border: UiRect::all(px(1)),
-                    border_radius: radius_card(),
+                    flex_shrink: 0.0,
+                    min_width: px(0),
+                    padding: UiRect { left: px(2), right: px(2), top: SPACE_STANDARD, bottom: SPACE_COMPACT },
+                    row_gap: px(10),
+                    border: UiRect::top(px(1)),
+                    border_radius: BorderRadius::ZERO,
                     ..default()
                 },
-                BackgroundColor(BG_CARD),
-                BorderColor::all(BORDER_CARD),
+                BackgroundColor(Color::NONE),
+                BorderColor::all(BORDER_SUBTLE),
                 ChildOf(parent),
             ))
             .id();
@@ -178,7 +180,7 @@ impl CardBuilder {
                         justify_content: JustifyContent::Center,
                         ..default()
                     },
-                    BackgroundColor(BG_INPUT),
+                    BackgroundColor(Color::NONE),
                     ChildOf(header_right),
                 ))
                 .add_child(arrow_entity)
@@ -192,7 +194,7 @@ impl CardBuilder {
                 })
                 .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
                     if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                        *bg = BackgroundColor(BG_INPUT);
+                        *bg = BackgroundColor(Color::NONE);
                     }
                 })
                 .observe(move |click: On<PointerClick>, mut body_query: Query<&mut Node>, mut arrow_query: Query<&mut Text>| {

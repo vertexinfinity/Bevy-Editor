@@ -5,12 +5,11 @@ use crate::scene::EditorInternal;
 use crate::ui::theme::*;
 use super::types::*;
 use super::components_card::*;
-use super::script_card::*;
 use super::transform_card::*;
 use super::material_card::*;
 use super::light_card::*;
 use super::active_scripts_card::*;
-pub fn spawn_inspector_panel(mut commands: Commands) {
+pub fn spawn_inspector_panel(mut commands: Commands, extensions: Res<super::extensions::InspectorSectionRegistry>) {
     let dock_root = commands
         .spawn((
             EditorInternal,
@@ -33,6 +32,45 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
         ))
         .id();
 
+    commands
+        .spawn((
+            EditorInternal,
+            InspectorResizeHandle { origin_width: None },
+            GlobalZIndex(20),
+            Node {
+                position_type: PositionType::Absolute,
+                left: px(0),
+                top: px(0),
+                bottom: px(0),
+                width: px(6),
+                ..default()
+            },
+            BackgroundColor(BORDER_SUBTLE),
+            ChildOf(dock_root),
+        ))
+        .observe(|_: On<PointerOver>, mut color: Query<&mut BackgroundColor, With<InspectorResizeHandle>>| {
+            if let Ok(mut color) = color.single_mut() { *color = BackgroundColor(BORDER_ACCENT); }
+        })
+        .observe(|_: On<PointerOut>, mut color: Query<&mut BackgroundColor, With<InspectorResizeHandle>>| {
+            if let Ok(mut color) = color.single_mut() { *color = BackgroundColor(BORDER_SUBTLE); }
+        })
+        .observe(|_: On<bevy::picking::events::PointerDragStart>, state: Res<InspectorState>, mut handle: Query<&mut InspectorResizeHandle>| {
+            if let Ok(mut handle) = handle.single_mut() { handle.origin_width = Some(state.width); }
+        })
+        .observe(|drag: On<bevy::picking::events::PointerDrag>, window: Query<&Window, With<bevy::window::PrimaryWindow>>, state: Res<InspectorState>, handle: Query<&InspectorResizeHandle>, mut dock: Query<&mut Node, With<InspectorDockRoot>>| {
+            if state.is_collapsed { return; }
+            let Ok(handle) = handle.single() else { return; };
+            let Some(origin) = handle.origin_width else { return; };
+            let direction = if state.dock_zone == PanelDockZone::Right { -1.0 } else { 1.0 };
+            let max_width = window.single().map(|window| (window.width() * 0.45).min(640.0)).unwrap_or(640.0);
+            let width = (origin + drag.distance.x * direction).clamp(260.0, max_width.max(260.0));
+            if let Ok(mut node) = dock.single_mut() { node.width = px(width); }
+        })
+        .observe(|_: On<bevy::picking::events::PointerDragEnd>, mut state: ResMut<InspectorState>, mut handle: Query<&mut InspectorResizeHandle>, dock: Query<&Node, With<InspectorDockRoot>>| {
+            if let Ok(node) = dock.single() { if let Val::Px(width) = node.width { state.width = width; } }
+            if let Ok(mut handle) = handle.single_mut() { handle.origin_width = None; }
+        });
+
     // 1. Inspector Header (Draggable title bar for docking / moving)
     let header = commands
         .spawn((
@@ -47,7 +85,7 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
                 overflow: Overflow::clip(),
                 ..default()
             },
-            BackgroundColor(BG_CARD),
+            BackgroundColor(BG_PANEL),
             BorderColor::all(BORDER_SUBTLE),
             ChildOf(dock_root),
         ))
@@ -133,7 +171,7 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
         EditorInternal,
         InspectorHeaderTitle,
         Pickable::IGNORE,
-        Text::new("Inspector ?"),
+        Text::new("Inspector"),
         TextFont {
             font_size: bevy::text::FontSize::Px(12.0),
             ..default()
@@ -163,7 +201,7 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
             InspectorModeBtn,
             Node {
                 padding: UiRect::axes(px(8), px(3)),
-                border: UiRect::all(px(1)),
+                border: UiRect::ZERO,
                 border_radius: BorderRadius::all(px(3)),
                 ..default()
             },
@@ -207,7 +245,7 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
             EditorInternal,
             Node {
                 padding: UiRect::axes(px(8), px(3)),
-                border: UiRect::all(px(1)),
+                border: UiRect::ZERO,
                 border_radius: BorderRadius::all(px(3)),
                 ..default()
             },
@@ -325,13 +363,16 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
         .spawn((
             EditorInternal,
             CleanViewRoot,
+            bevy::ui_widgets::ScrollArea,
             Node {
                 width: percent(100),
-                height: percent(100),
+                flex_grow: 1.0,
+                min_height: px(0),
+                flex_basis: px(0),
                 flex_direction: FlexDirection::Column,
                 padding: UiRect::all(px(10)),
-                row_gap: px(10),
-                overflow: Overflow::clip_y(),
+                row_gap: px(0),
+                overflow: Overflow::scroll_y(),
                 display: Display::Flex,
                 ..default()
             },
@@ -340,6 +381,7 @@ pub fn spawn_inspector_panel(mut commands: Commands) {
         .id();
 
     spawn_clean_transform_panel(&mut commands, clean_root);
+    extensions.spawn_sections(&mut commands, clean_root);
 
     // 3. Debug View Root (Full Feathers Reflection Inspector)
     let debug_root = commands
@@ -393,15 +435,16 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
         .spawn((
             EditorInternal,
             Node {
-                flex_direction: FlexDirection::Row,
-                justify_content: JustifyContent::SpaceBetween,
-                align_items: AlignItems::Center,
-                padding: UiRect::axes(px(8), px(6)),
-                border: UiRect::all(px(1)),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Stretch,
+                row_gap: px(8),
+                flex_shrink: 0.0,
+                padding: UiRect::all(px(12)),
+                border: UiRect::ZERO,
                 border_radius: BorderRadius::all(px(4)),
                 ..default()
             },
-            BackgroundColor(BG_CARD),
+            BackgroundColor(BG_PANEL),
             BorderColor::all(BORDER_SUBTLE),
             ChildOf(parent),
         ))
@@ -411,12 +454,12 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
         EditorInternal,
         SelectedEntityLabel,
         Pickable::IGNORE,
-        Text::new("Selected: None (Click object in scene)"),
+        Text::new("Select an entity"),
         TextFont {
-            font_size: bevy::text::FontSize::Px(12.0),
+            font_size: bevy::text::FontSize::Px(14.0),
             ..default()
         },
-        TextColor(ACCENT_CYAN),
+        TextColor(TEXT_PRIMARY),
         ChildOf(ent_header),
     ));
 
@@ -426,7 +469,7 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
             EditorInternal,
             Node {
                 padding: UiRect::axes(px(8), px(3)),
-                border: UiRect::all(px(1)),
+                border: UiRect::ZERO,
                 border_radius: BorderRadius::all(px(3)),
                 ..default()
             },
@@ -470,13 +513,14 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
             EditorInternal,
             Node {
                 flex_direction: FlexDirection::Column,
+                flex_shrink: 0.0,
                 padding: UiRect::all(SPACE_COMPACT),
                 row_gap: SPACE_COMPACT,
-                border: UiRect::all(px(1)),
+                border: UiRect::ZERO,
                 border_radius: radius_card(),
                 ..default()
             },
-            BackgroundColor(BG_CARD),
+            BackgroundColor(BG_PANEL),
             BorderColor::all(BORDER_CARD),
             ChildOf(parent),
         ))
@@ -513,7 +557,7 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
             EditorInternal,
             Node {
                 padding: UiRect::axes(px(6), px(2)),
-                border: UiRect::all(px(1)),
+                border: UiRect::ZERO,
                 border_radius: radius_button(),
                 ..default()
             },
@@ -543,7 +587,7 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
     commands.spawn((
         EditorInternal,
         Pickable::IGNORE,
-        Text::new("? Reset"),
+        Text::new("Reset"),
         TextFont {
             font_size: bevy::text::FontSize::Px(FONT_SIZE_SMALL),
             ..default()
@@ -562,13 +606,14 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
             EditorInternal,
             Node {
                 flex_direction: FlexDirection::Column,
+                flex_shrink: 0.0,
                 padding: UiRect::all(SPACE_COMPACT),
                 row_gap: px(6),
-                border: UiRect::all(px(1)),
+                border: UiRect::ZERO,
                 border_radius: radius_card(),
                 ..default()
             },
-            BackgroundColor(BG_CARD),
+            BackgroundColor(BG_PANEL),
             BorderColor::all(BORDER_CARD),
             ChildOf(parent),
         ))
@@ -600,17 +645,14 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
     ));
 
     // D. Script Properties Card (Standardized CardBuilder shell)
-    let (script_card, script_actions, script_body) = crate::ui::panel::CardBuilder::new("Script Component")
-        .icon("📜")
+    let (script_card, _header_actions, script_body) = crate::ui::panel::CardBuilder::new("Script Component")
+        .icon("⌘")
         .collapsible(true)
         .spawn_shell(commands, parent);
 
     commands.entity(script_card).insert(ScriptCardRoot);
 
-    spawn_script_prop_btn(commands, script_actions, "Speed -1", ScriptPropAction::NudgeFloat { key: "move_speed".to_string(), delta: -1.0 });
-    spawn_script_prop_btn(commands, script_actions, "Speed +1", ScriptPropAction::NudgeFloat { key: "move_speed".to_string(), delta: 1.0 });
-    spawn_script_prop_btn(commands, script_actions, "Jump +2", ScriptPropAction::NudgeFloat { key: "jump_force".to_string(), delta: 2.0 });
-    spawn_script_prop_btn(commands, script_actions, "Toggle Active", ScriptPropAction::ToggleBool { key: "is_active".to_string() });
+    commands.entity(script_body).insert(super::script_card::ScriptFieldsRoot);
 
     commands.spawn((
         EditorInternal,
@@ -632,6 +674,7 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
     spawn_material_card(commands, parent);
 
     // G. Active Scripts Monitor Card
+    super::relations_card::spawn_relations_card(commands, parent);
     spawn_active_scripts_card(commands, parent);
 
     // G. Add Component Section
@@ -640,13 +683,14 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
             EditorInternal,
             Node {
                 flex_direction: FlexDirection::Column,
+                flex_shrink: 0.0,
                 padding: UiRect::all(SPACE_COMPACT),
                 row_gap: SPACE_COMPACT,
-                border: UiRect::all(px(1)),
+                border: UiRect::ZERO,
                 border_radius: radius_card(),
                 ..default()
             },
-            BackgroundColor(BG_CARD),
+            BackgroundColor(BG_PANEL),
             BorderColor::all(BORDER_CARD),
             ChildOf(parent),
         ))
@@ -664,7 +708,7 @@ fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
                 flex_direction: FlexDirection::Column,
                 row_gap: px(2),
                 padding: UiRect::all(px(4)),
-                border: UiRect::all(px(1)),
+                border: UiRect::ZERO,
                 border_radius: radius_card(),
                 ..default()
             },
@@ -708,6 +752,7 @@ pub fn handle_inspector_toggle_messages(
     mut coord_msgs: MessageReader<ToggleCoordModeMessage>,
     mut state: ResMut<InspectorState>,
     mut dock_query: Query<&mut Node, With<InspectorDockRoot>>,
+    mut resize_handle_query: Query<&mut Node, (With<InspectorResizeHandle>, Without<InspectorDockRoot>, Without<CleanViewRoot>, Without<DebugViewRoot>, Without<InspectorHeaderTitle>, Without<InspectorModeBtn>)>,
     mut clean_query: Query<&mut Node, (With<CleanViewRoot>, Without<InspectorDockRoot>, Without<DebugViewRoot>, Without<InspectorHeaderTitle>, Without<InspectorModeBtn>)>,
     mut debug_query: Query<&mut Node, (With<DebugViewRoot>, Without<InspectorDockRoot>, Without<CleanViewRoot>, Without<InspectorHeaderTitle>, Without<InspectorModeBtn>)>,
     mut title_query: Query<&mut Node, (With<InspectorHeaderTitle>, Without<InspectorDockRoot>, Without<CleanViewRoot>, Without<DebugViewRoot>, Without<InspectorModeBtn>)>,
@@ -727,6 +772,14 @@ pub fn handle_inspector_toggle_messages(
     }
 
     if state.is_changed() {
+        if let Ok(mut handle_node) = resize_handle_query.single_mut() {
+            handle_node.display = if state.is_collapsed { Display::None } else { Display::Flex };
+            match state.dock_zone {
+                PanelDockZone::Right => { handle_node.left = px(0); handle_node.right = Val::Auto; }
+                PanelDockZone::Left => { handle_node.left = Val::Auto; handle_node.right = px(0); }
+                PanelDockZone::Floating => { handle_node.left = px(0); handle_node.right = Val::Auto; }
+            }
+        }
         // Update dock root width and position
         if let Ok(mut dock_node) = dock_query.single_mut() {
             if state.is_collapsed {

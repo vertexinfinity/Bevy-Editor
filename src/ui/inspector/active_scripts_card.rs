@@ -41,20 +41,27 @@ pub fn update_active_scripts_panel(
     content_query: Query<Entity, With<ActiveScriptsContent>>,
     mut commands: Commands,
     children_query: Query<&Children>,
+    mut previous: Local<Option<(Entity, Vec<(Entity, String, String, bool)>)>>,
 ) {
     let Ok(content_entity) = content_query.single() else { return };
+
+    let mut scripts_list: Vec<(Entity, String, String, bool)> = Vec::new();
+    for (entity, name, script) in &scripts_query {
+        let ent_name = name.map(|n| n.as_str().to_string()).unwrap_or_else(|| format!("Entity #{}", entity.index()));
+        scripts_list.push((entity, ent_name, script.script_file.clone(), script.enabled));
+    }
+
+    scripts_list.sort_by_key(|row| row.0);
+    if previous.as_ref().is_some_and(|(content, rows)| *content == content_entity && *rows == scripts_list) {
+        return;
+    }
+    *previous = Some((content_entity, scripts_list.clone()));
 
     // Despawn old child rows
     if let Ok(children) = children_query.get(content_entity) {
         for child in children.iter() {
             commands.entity(child).despawn();
         }
-    }
-
-    let mut scripts_list: Vec<(Entity, String, String, bool)> = Vec::new();
-    for (entity, name, script) in &scripts_query {
-        let ent_name = name.map(|n| n.as_str().to_string()).unwrap_or_else(|| format!("Entity #{}", entity.index()));
-        scripts_list.push((entity, ent_name, script.script_file.clone(), script.enabled));
     }
 
     if scripts_list.is_empty() {
@@ -81,7 +88,7 @@ pub fn update_active_scripts_panel(
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::SpaceBetween,
                     padding: UiRect::axes(px(6), px(3)),
-                    border: UiRect::all(px(1)),
+                    border: UiRect::ZERO,
                     border_radius: radius_button(),
                     ..default()
                 },
@@ -182,7 +189,7 @@ pub fn update_active_scripts_panel(
                 EditorInternal,
                 Node {
                     padding: UiRect::axes(px(6), px(2)),
-                    border: UiRect::all(px(1)),
+                    border: UiRect::ZERO,
                     border_radius: radius_button(),
                     ..default()
                 },

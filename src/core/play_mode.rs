@@ -1,19 +1,18 @@
-//! Play-In-Editor (PIE) Simulation & Hot-Reload Preview System.
-//!
-//! Provides:
-//! - In-Viewport Play (▶ Play)
-//! - Standalone Pop-out Window (⧉ Window)
-//! - Simulation Pause (⏸) and Stop (⏹) with memory rollback
-
-use bevy::{
-    ecs::message::Message,
-    prelude::*,
-    world_serialization::DynamicWorld,
+//! Game View runs a scene copy. Stop only deletes preview-owned entities.
+use super::play_input::GameInput;
+use crate::{
+    camera::EditorCamera,
+    scene::{EditorInternal, SceneEntity},
 };
-use crate::camera::EditorCamera;
-use crate::scene::{primitives, EditorInternal, SceneEntity};
+use bevy::{
+    camera::{RenderTarget, visibility::RenderLayers},
+    ecs::entity::EntityHashMap,
+    prelude::*,
+    window::{CursorGrabMode, CursorOptions, PrimaryWindow, WindowRef},
+    world_serialization::{DynamicWorldBuilder, DynamicWorldRoot, WorldAssetRoot},
+};
+use std::collections::HashMap;
 
-/// Current simulation state of the editor.
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PlayState {
     #[default]
@@ -21,21 +20,22 @@ pub enum PlayState {
     Playing,
     Paused,
 }
-
-/// Marker for dedicated pop-out game preview windows.
 #[derive(Component)]
 pub struct PreviewWindow;
-
-/// Marker for cameras rendering to the pop-out preview window.
 #[derive(Component)]
 pub struct PreviewCamera;
-
-/// In-memory snapshot taken right before entering Play mode.
+/// Gameplay queries must target runtime copies, never the authoring scene.
+#[derive(Component)]
+pub struct PreviewEntity;
+#[derive(Component)]
+struct PreviewHud;
 #[derive(Resource, Default)]
-pub struct SceneSnapshot {
-    pub snapshot: Option<DynamicWorld>,
+pub struct PlaySession {
+    pub window: Option<Entity>,
+    pub camera: Option<Entity>,
+    pub entity_map: EntityHashMap<Entity>,
+    step_pending: bool,
 }
-
 #[derive(Component, Message, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PlayModeAction {
     Play,
@@ -44,189 +44,492 @@ pub enum PlayModeAction {
     Stop,
     Step,
 }
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PlaySystems {
+    Lifecycle,
+    Simulation,
+}
+pub fn in_edit_mode(state: Res<PlayState>) -> bool {
+    *state == PlayState::Edit
+}
 
-pub struct PlayModePlugin;
-
-impl Plugin for PlayModePlugin {
-    fn build(&self, app: &mut App) {
-        app.init_resource::<PlayState>()
-            .init_resource::<SceneSnapshot>()
-            .add_message::<PlayModeAction>()
-            .add_systems(Update, handle_play_mode_actions);
+/// Bound idle redraw latency so deferred layout/text changes appear without another input event.
+pub fn editor_winit_settings() -> bevy::winit::WinitSettings {
+    use bevy::winit::{UpdateMode, WinitSettings};
+    use std::time::Duration;
+    WinitSettings {
+        focused_mode: UpdateMode::reactive(Duration::from_secs_f64(1.0 / 60.0)),
+        unfocused_mode: UpdateMode::reactive_low_power(Duration::from_millis(250)),
     }
 }
 
-pub fn handle_play_mode_actions(world: &mut World) {
-    let actions: Vec<PlayModeAction> = {
-        let Some(mut messages) = world.get_resource_mut::<Messages<PlayModeAction>>() else {
-            return;
-        };
-        messages.drain().collect()
-    };
+pub struct PlayModePlugin;
+impl Plugin for PlayModePlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<PlayState>()
+            .init_resource::<PlaySession>()
+            .add_message::<PlayModeAction>()
+            .configure_sets(
+                Update,
+                (PlaySystems::Lifecycle, PlaySystems::Simulation).chain(),
+            )
+            .add_systems(
+                Update,
+                handle_play_mode_actions.in_set(PlaySystems::Lifecycle),
+            )
+            .add_systems(PostUpdate, (finish_single_step, update_preview_hud).chain());
+        super::play_input::install(app);
+    }
+}
 
+fn start_play_session(world: &mut World) -> Result<(), String> {
+    let sources: Vec<Entity> = world
+        .query_filtered::<Entity, (
+            With<SceneEntity>,
+            Without<Window>,
+            Without<PrimaryWindow>,
+            Without<EditorInternal>,
+            Without<EditorCamera>,
+            Without<PreviewEntity>,
+        )>()
+        .iter(world)
+        .collect();
+    let parents: Vec<_> = sources
+        .iter()
+        .filter_map(|entity| {
+            world
+                .get::<ChildOf>(*entity)
+                .map(|parent| (*entity, parent.parent()))
+        })
+        .collect();
+    let dynamic = {
+        let registry = world.resource::<AppTypeRegistry>().read();
+        DynamicWorldBuilder::from_world(world, &registry)
+            .deny_component::<SceneEntity>()
+            .deny_component::<EditorInternal>()
+            .deny_component::<ChildOf>()
+            .deny_component::<Children>()
+            .deny_component::<DynamicWorldRoot>()
+            .deny_component::<WorldAssetRoot>()
+            .deny_component::<bevy::gizmos::transform_gizmo::TransformGizmoFocus>()
+            .deny_component::<IsDefaultUiCamera>()
+            .deny_component::<bevy::camera::visibility::VisibilityClass>()
+            .deny_component::<bevy::camera::visibility::ViewVisibility>()
+            .extract_entities(sources.into_iter())
+            .build()
+    };
+    let mut map = EntityHashMap::default();
+    if let Err(error) = dynamic.write_to_world(world, &mut map) {
+        for entity in map.values() {
+            if world.get_entity(*entity).is_ok() {
+                world.despawn(*entity);
+            }
+        }
+        return Err(format!("Cannot create runtime scene: {error}"));
+    }
+    // Only recreate relationships within the scene copy; never attach it to a window or editor UI.
+    for (source, parent) in parents {
+        if let (Some(entity), Some(parent)) = (map.get(&source), map.get(&parent)) {
+            world.entity_mut(*entity).insert(ChildOf(*parent));
+        }
+    }
+    let mut material_copies: HashMap<AssetId<StandardMaterial>, Handle<StandardMaterial>> =
+        HashMap::new();
+    for entity in map.values() {
+        world
+            .entity_mut(*entity)
+            .insert((PreviewEntity, RenderLayers::layer(31)));
+        if let Some(mut camera) = world.get_mut::<Camera>(*entity) {
+            camera.is_active = false;
+        }
+        if let Some(handle) = world
+            .get::<MeshMaterial3d<StandardMaterial>>(*entity)
+            .map(|material| material.0.clone())
+        {
+            let copy = if let Some(copy) = material_copies.get(&handle.id()) {
+                Some(copy.clone())
+            } else {
+                let value = world
+                    .get_resource::<Assets<StandardMaterial>>()
+                    .and_then(|materials| materials.get(&handle).cloned());
+                value.map(|value| {
+                    let copy = world.resource_mut::<Assets<StandardMaterial>>().add(value);
+                    material_copies.insert(handle.id(), copy.clone());
+                    copy
+                })
+            };
+            if let Some(copy) = copy {
+                world.entity_mut(*entity).insert(MeshMaterial3d(copy));
+            }
+        }
+    }
+    let window = world
+        .spawn((
+            PreviewWindow,
+            EditorInternal,
+            Window {
+                title:
+                    "Bevylite — Game View | Space/E: gate · RMB: orbit · Esc: release · F8: Stop"
+                        .into(),
+                resolution: (960, 640).into(),
+                focused: true,
+                ..default()
+            },
+            CursorOptions::default(),
+        ))
+        .id();
+    let mut cameras: Vec<_> = map
+        .values()
+        .copied()
+        .filter(|entity| world.get::<Camera>(*entity).is_some())
+        .collect();
+    cameras.sort();
+    let camera = if let Some(camera) = cameras.first() {
+        *camera
+    } else {
+        let transform = world
+            .query_filtered::<&Transform, With<EditorCamera>>()
+            .iter(world)
+            .next()
+            .copied()
+            .unwrap_or_else(|| Transform::from_xyz(0.0, 5.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y));
+        world
+            .spawn((
+                PreviewEntity,
+                Camera3d::default(),
+                transform,
+                RenderLayers::layer(31),
+            ))
+            .id()
+    };
+    // Serialization does not guarantee runtime camera pipeline components are reflected.
+    // Reinstall the camera kind so Bevy supplies its required render graph and view state.
+    let is_2d = map
+        .iter()
+        .any(|(source, runtime)| *runtime == camera && world.get::<Camera2d>(*source).is_some());
+    if is_2d {
+        world.entity_mut(camera).insert(Camera2d);
+    } else {
+        world.entity_mut(camera).insert(Camera3d::default());
+    }
+    world.entity_mut(camera).insert((
+        PreviewCamera,
+        Camera {
+            is_active: true,
+            ..default()
+        },
+        RenderTarget::Window(WindowRef::Entity(window)),
+        bevy::picking::mesh_picking::MeshPickingCamera,
+    ));
+    for entity in map.values() {
+        if world.get::<Node>(*entity).is_some() {
+            world.entity_mut(*entity).insert(UiTargetCamera(camera));
+        }
+    }
+    world.spawn((
+        PreviewEntity,
+        PreviewHud,
+        EditorInternal,
+        Pickable::IGNORE,
+        UiTargetCamera(camera),
+        Node {
+            position_type: PositionType::Absolute,
+            left: px(12),
+            bottom: px(12),
+            padding: UiRect::all(px(10)),
+            ..default()
+        },
+        BackgroundColor(Color::srgba(0.02, 0.03, 0.05, 0.88)),
+        Text::new("Game View · Space/E: gate · Click switch · RMB: orbit · Wheel: zoom · F8: Stop"),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(14.0),
+            ..default()
+        },
+        TextColor(Color::WHITE),
+    ));
+    *world.resource_mut::<PlaySession>() = PlaySession {
+        window: Some(window),
+        camera: Some(camera),
+        entity_map: map,
+        step_pending: false,
+    };
+    *world.resource_mut::<PlayState>() = PlayState::Playing;
+    *world.resource_mut::<GameInput>() = default();
+    if let Some(mut gizmo) =
+        world.get_resource_mut::<bevy::gizmos::transform_gizmo::TransformGizmoState>()
+    {
+        *gizmo = default();
+    }
+    let focused: Vec<_> = world
+        .query_filtered::<Entity, With<bevy::gizmos::transform_gizmo::TransformGizmoFocus>>()
+        .iter(world)
+        .collect();
+    for entity in focused {
+        world
+            .entity_mut(entity)
+            .remove::<bevy::gizmos::transform_gizmo::TransformGizmoFocus>();
+    }
+    if let Some(mut settings) = world.get_resource_mut::<bevy::winit::WinitSettings>() {
+        settings.focused_mode = bevy::winit::UpdateMode::Continuous;
+    }
+    info!("Game View started; authoring scene preserved.");
+    Ok(())
+}
+
+fn stop_play_session(world: &mut World) {
+    let runtime: Vec<_> = world
+        .query_filtered::<Entity, (
+            With<PreviewEntity>,
+            Without<Window>,
+            Without<PrimaryWindow>,
+            Without<EditorCamera>,
+        )>()
+        .iter(world)
+        .collect();
+    for entity in runtime {
+        if world.get_entity(entity).is_ok() {
+            world.despawn(entity);
+        }
+    }
+    let window = world.resource::<PlaySession>().window;
+    if let Some(window) = window {
+        if world.get::<PreviewWindow>(window).is_some()
+            && world.get::<PrimaryWindow>(window).is_none()
+        {
+            world.despawn(window);
+        }
+    }
+    for mut cursor in world.query::<&mut CursorOptions>().iter_mut(world) {
+        cursor.grab_mode = CursorGrabMode::None;
+        cursor.visible = true;
+    }
+    *world.resource_mut::<PlaySession>() = default();
+    *world.resource_mut::<GameInput>() = default();
+    *world.resource_mut::<PlayState>() = PlayState::Edit;
+    if let Some(mut settings) = world.get_resource_mut::<bevy::winit::WinitSettings>() {
+        *settings = editor_winit_settings();
+    }
+    info!("Game View stopped; authoring scene unchanged.");
+}
+
+pub fn handle_play_mode_actions(world: &mut World) {
+    let actions: Vec<_> = world
+        .resource_mut::<Messages<PlayModeAction>>()
+        .drain()
+        .collect();
+    if *world.resource::<PlayState>() != PlayState::Edit
+        && world
+            .resource::<PlaySession>()
+            .window
+            .is_some_and(|window| world.get::<Window>(window).is_none())
+    {
+        stop_play_session(world);
+    }
     for action in actions {
         match action {
-            PlayModeAction::Play => {
-                let current_state = *world.resource::<PlayState>();
-                match current_state {
-                    PlayState::Edit => {
-                        info!("Entering In-Viewport Play mode: zero compilation overhead, executing simulation on loaded models and scripts...");
-                        
-                        // Extract ONLY authorable SceneEntity entities (fast, <1ms, zero lag, no UI cloning)
-                        let dynamic_world = {
-                            let type_registry = world.resource::<AppTypeRegistry>().read();
-                            let scene_entities: Vec<Entity> = if let Some(mut state) =
-                                bevy::ecs::query::QueryState::<Entity, (With<SceneEntity>, Without<EditorInternal>, Without<bevy::world_serialization::DynamicWorldRoot>)>::try_new(world)
-                            {
-                                state.iter(world).collect()
-                            } else {
-                                Vec::new()
-                            };
-
-                            bevy::world_serialization::DynamicWorldBuilder::from_world(world, &type_registry)
-                                .deny_component::<EditorInternal>()
-                                .deny_component::<SceneEntity>()
-                                .deny_component::<bevy::world_serialization::DynamicWorldRoot>()
-                                .deny_component::<bevy::camera::visibility::VisibilityClass>()
-                                .deny_component::<bevy::camera::visibility::ViewVisibility>()
-                                .extract_entities(scene_entities.into_iter())
-                                .remove_empty_entities()
-                                .build()
-                        };
-
-                        world.resource_mut::<SceneSnapshot>().snapshot = Some(dynamic_world);
-                        *world.resource_mut::<PlayState>() = PlayState::Playing;
-
-                        // Check if the scene has its own game camera (e.g. from template or authoring)
-                        let has_game_cam = if let Some(mut state) =
-                            bevy::ecs::query::QueryState::<Entity, (With<Camera>, With<SceneEntity>, Without<EditorCamera>)>::try_new(world)
-                        {
-                            state.iter(world).next().is_some()
-                        } else {
-                            false
-                        };
-
-                        if has_game_cam {
-                            info!("Scene has dedicated game camera: disabling editor fly camera for play...");
-                            if let Some(mut state) =
-                                bevy::ecs::query::QueryState::<&mut Camera, With<EditorCamera>>::try_new(world)
-                            {
-                                for mut cam in state.iter_mut(world) {
-                                    cam.is_active = false;
-                                }
-                            }
-                        }
-
-                        info!("Play mode active: simulation running!");
+            PlayModeAction::Play => match *world.resource::<PlayState>() {
+                PlayState::Edit => {
+                    if let Err(error) = start_play_session(world) {
+                        error!("{error}");
                     }
-                    PlayState::Paused => {
-                        *world.resource_mut::<PlayState>() = PlayState::Playing;
-                        info!("Resumed Play mode.");
-                    }
-                    PlayState::Playing => {}
                 }
-                if let Some(mut settings) = world.get_resource_mut::<bevy::winit::WinitSettings>() {
-                    settings.focused_mode = bevy::winit::UpdateMode::Continuous;
-                }
-            }
-            PlayModeAction::PlayInWindow => {
-                let project_dir = world
-                    .get_resource::<crate::ui::hub::ActiveProject>()
-                    .and_then(|p| p.project_dir.clone());
-
-                if let Some(proj_dir) = project_dir {
-                    info!("Launching Standalone Application via 'cargo run' for {}...", proj_dir.display());
-                    info!("(Note: Standalone runner builds the independent Rust binary with Cargo. For instant 0s play on loaded models, click '▶ Play'!)");
-
-                    // Save active scene as default_scene.bsn so standalone game runs current edits
-                    let scenes_dir = proj_dir.join("assets").join("scenes");
-                    let _ = std::fs::create_dir_all(&scenes_dir);
-                    let default_scene_path = scenes_dir.join("default_scene.bsn");
-                    if let Err(e) = crate::scene::save_load::save_world_to_scene(world, &default_scene_path) {
-                        warn!("Could not save active scene before launching window: {e}");
-                    }
-
-                    // Sync models to user project if needed
-                    let editor_models = std::path::Path::new("assets/models");
-                    let project_models = proj_dir.join("assets").join("models");
-                    if editor_models.is_dir() {
-                        let _ = std::fs::create_dir_all(&project_models);
-                        if let Ok(entries) = std::fs::read_dir(editor_models) {
-                            for entry in entries.flatten() {
-                                let dest = project_models.join(entry.file_name());
-                                if !dest.exists() {
-                                    let _ = std::fs::copy(entry.path(), dest);
-                                }
-                            }
-                        }
-                    }
-
-                    // Spawn standalone game process (zero DX12 swapchain sharing issues, pure 60FPS)
-                    let child_res = std::process::Command::new("cargo")
-                        .arg("run")
-                        .current_dir(&proj_dir)
-                        .spawn();
-
-                    match child_res {
-                        Ok(_) => info!("Spawned standalone game window in external process!"),
-                        Err(e) => warn!("Failed to launch standalone game process: {e}"),
-                    }
-                } else {
-                    warn!("Cannot open standalone window: No active project loaded. Open or create a project first.");
-                }
-            }
-            PlayModeAction::Pause => {
-                let current_state = *world.resource::<PlayState>();
-                if current_state == PlayState::Playing {
-                    *world.resource_mut::<PlayState>() = PlayState::Paused;
-                    info!("Simulation paused.");
-                } else if current_state == PlayState::Paused {
-                    *world.resource_mut::<PlayState>() = PlayState::Playing;
-                    info!("Simulation unpaused.");
-                }
-            }
+                PlayState::Paused => *world.resource_mut::<PlayState>() = PlayState::Playing,
+                PlayState::Playing => {}
+            },
+            PlayModeAction::Pause => match *world.resource::<PlayState>() {
+                PlayState::Playing => *world.resource_mut::<PlayState>() = PlayState::Paused,
+                PlayState::Paused => *world.resource_mut::<PlayState>() = PlayState::Playing,
+                _ => {}
+            },
             PlayModeAction::Stop => {
-                let current_state = *world.resource::<PlayState>();
-                if current_state != PlayState::Edit {
-                    info!("Stopping simulation: rolling back world snapshot...");
-                    *world.resource_mut::<PlayState>() = PlayState::Edit;
-
-                    // Always ensure EditorCamera is re-activated for editing
-                    if let Some(mut state) =
-                        bevy::ecs::query::QueryState::<&mut Camera, With<EditorCamera>>::try_new(world)
-                    {
-                        for mut cam in state.iter_mut(world) {
-                            cam.is_active = true;
-                        }
-                    }
-
-                    // Despawn preview pop-out window and camera if any exist
-                    world.despawn_all::<With<PreviewWindow>>();
-                    world.despawn_all::<With<PreviewCamera>>();
-
-                    // Despawn simulated scene entities
-                    world.despawn_all::<With<SceneEntity>>();
-
-                    // Restore in-memory snapshot
-                    let snapshot = world.resource_mut::<SceneSnapshot>().snapshot.take();
-                    if let Some(dynamic_world) = snapshot {
-                        let mut entity_map = bevy::ecs::entity::EntityHashMap::default();
-                        let _ = dynamic_world.write_to_world(world, &mut entity_map);
-                        info!("World restored to exact pre-play snapshot.");
-                    } else {
-                        let _ = world.run_system_cached(primitives::spawn_starter_scene);
-                    }
-
-                    // Restore energy-efficient reactive update mode when returning to Edit mode
-                    if let Some(mut settings) = world.get_resource_mut::<bevy::winit::WinitSettings>() {
-                        settings.focused_mode = bevy::winit::UpdateMode::reactive(std::time::Duration::from_secs(5));
-                    }
+                if *world.resource::<PlayState>() != PlayState::Edit {
+                    stop_play_session(world);
                 }
             }
             PlayModeAction::Step => {
-                info!("Single-frame simulation step.");
-                *world.resource_mut::<PlayState>() = PlayState::Paused;
+                if *world.resource::<PlayState>() == PlayState::Edit {
+                    if let Err(error) = start_play_session(world) {
+                        error!("{error}");
+                        continue;
+                    }
+                }
+                *world.resource_mut::<PlayState>() = PlayState::Playing;
+                world.resource_mut::<PlaySession>().step_pending = true;
             }
+            PlayModeAction::PlayInWindow => super::standalone::launch(world),
         }
+    }
+}
+fn finish_single_step(mut state: ResMut<PlayState>, mut session: ResMut<PlaySession>) {
+    if session.step_pending {
+        session.step_pending = false;
+        *state = PlayState::Paused;
+    }
+}
+fn update_preview_hud(
+    state: Res<PlayState>,
+    input: Res<GameInput>,
+    mut labels: Query<&mut Text, With<PreviewHud>>,
+) {
+    let label = if *state == PlayState::Paused {
+        "PAUSED · Resume or Step in the editor · Close Game View to Stop"
+    } else if !input.active {
+        "Click Game View for game input · Space/E: gate · Esc: release · F8: Stop"
+    } else {
+        "PLAYING · Space/E: gate · Click switch · RMB: orbit · Wheel: zoom · Esc: release · F8: Stop"
+    };
+    for mut text in &mut labels {
+        if text.0 != label {
+            text.0 = label.into();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scene::components::ScriptComponent;
+
+    fn fixture() -> (App, Entity, Entity, Entity) {
+        let mut app = App::new();
+        app.init_resource::<PlayState>()
+            .init_resource::<PlaySession>()
+            .init_resource::<GameInput>()
+            .init_resource::<Assets<StandardMaterial>>()
+            .register_type::<Name>()
+            .register_type::<Transform>()
+            .register_type::<ScriptComponent>()
+            .register_type::<MeshMaterial3d<StandardMaterial>>();
+        let primary = app
+            .world_mut()
+            .spawn((Window::default(), PrimaryWindow, EditorInternal))
+            .id();
+        let root = app
+            .world_mut()
+            .spawn((SceneEntity, Name::new("Root"), Transform::default()))
+            .id();
+        let material = app
+            .world_mut()
+            .resource_mut::<Assets<StandardMaterial>>()
+            .add(StandardMaterial::default());
+        let child = app
+            .world_mut()
+            .spawn((
+                SceneEntity,
+                Name::new("Child"),
+                Transform::from_xyz(1.0, 2.0, 3.0),
+                ChildOf(root),
+                MeshMaterial3d(material),
+            ))
+            .id();
+        app.world_mut().entity_mut(root).insert(ScriptComponent {
+            entity_refs: HashMap::from([("child".into(), child)]),
+            ..default()
+        });
+        (app, primary, root, child)
+    }
+
+    #[test]
+    fn repeated_play_stop_preserves_editor_and_authoring_scene() {
+        let (mut app, primary, root, child) = fixture();
+        let world = app.world_mut();
+        let original = *world.get::<Transform>(child).unwrap();
+        for _ in 0..3 {
+            start_play_session(world).unwrap();
+            let map = world.resource::<PlaySession>().entity_map.clone();
+            assert_eq!(
+                world.get::<ChildOf>(map[&child]).unwrap().parent(),
+                map[&root]
+            );
+            assert_eq!(
+                world
+                    .get::<ScriptComponent>(map[&root])
+                    .unwrap()
+                    .entity_refs["child"],
+                map[&child]
+            );
+            let source_material = world
+                .get::<MeshMaterial3d<StandardMaterial>>(child)
+                .unwrap()
+                .0
+                .clone();
+            let runtime_material = world
+                .get::<MeshMaterial3d<StandardMaterial>>(map[&child])
+                .unwrap()
+                .0
+                .clone();
+            assert_ne!(source_material, runtime_material);
+            world.get_mut::<Transform>(map[&child]).unwrap().translation = Vec3::splat(99.0);
+            stop_play_session(world);
+            assert!(world.get::<PrimaryWindow>(primary).is_some());
+            assert_eq!(world.get::<Transform>(child).unwrap(), &original);
+            assert_eq!(world.get::<ChildOf>(child).unwrap().parent(), root);
+            assert_eq!(
+                world
+                    .query_filtered::<Entity, With<PreviewEntity>>()
+                    .iter(world)
+                    .count(),
+                0
+            );
+            assert_eq!(
+                world
+                    .query_filtered::<Entity, With<PreviewWindow>>()
+                    .iter(world)
+                    .count(),
+                0
+            );
+        }
+    }
+
+    #[test]
+    fn reflected_camera_reinstalls_required_render_pipeline() {
+        let (mut app, _, _, _) = fixture();
+        app.register_type::<Camera>();
+        app.world_mut()
+            .register_required_components_with::<Camera3d, bevy::render::camera::CameraRenderGraph>(
+                || {
+                    bevy::render::camera::CameraRenderGraph::new(
+                        bevy::core_pipeline::schedule::Core3d,
+                    )
+                },
+            );
+        let source = app
+            .world_mut()
+            .spawn((
+                SceneEntity,
+                Camera3d::default(),
+                Transform::from_xyz(0.0, 5.0, 10.0),
+            ))
+            .id();
+        start_play_session(app.world_mut()).unwrap();
+        let runtime = app.world().resource::<PlaySession>().entity_map[&source];
+        assert_eq!(app.world().resource::<PlaySession>().camera, Some(runtime));
+        assert!(app.world().get::<Camera3d>(runtime).is_some());
+        assert!(
+            app.world()
+                .get::<bevy::render::camera::CameraRenderGraph>(runtime)
+                .is_some()
+        );
+        assert!(app.world().get::<RenderTarget>(runtime).is_some());
+    }
+
+    #[test]
+    fn closing_game_view_and_single_step_do_not_close_editor() {
+        let (mut app, primary, _, _) = fixture();
+        app.add_message::<PlayModeAction>()
+            .add_systems(PostUpdate, finish_single_step);
+        let world = app.world_mut();
+        world
+            .resource_mut::<Messages<PlayModeAction>>()
+            .write(PlayModeAction::Step);
+        handle_play_mode_actions(world);
+        assert_eq!(*world.resource::<PlayState>(), PlayState::Playing);
+        app.world_mut().run_schedule(PostUpdate);
+        assert_eq!(*app.world().resource::<PlayState>(), PlayState::Paused);
+        let preview = app.world().resource::<PlaySession>().window.unwrap();
+        app.world_mut().despawn(preview);
+        handle_play_mode_actions(app.world_mut());
+        assert_eq!(*app.world().resource::<PlayState>(), PlayState::Edit);
+        assert!(app.world().get::<PrimaryWindow>(primary).is_some());
     }
 }

@@ -82,6 +82,9 @@ pub fn spawn_template_scene(
     template: ProjectTemplateKind,
 ) {
     match template {
+        ProjectTemplateKind::EditorShowcase => {
+            super::showcase::spawn_editor_showcase(commands, meshes, materials);
+        }
         ProjectTemplateKind::FirstPerson => {
             // 1. Sun Light
             commands.spawn((

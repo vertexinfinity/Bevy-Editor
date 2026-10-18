@@ -388,6 +388,18 @@ pub fn handle_mcp() {
                     "result": {
                         "tools": [
                             {
+                                "name": "bevylite_editor_rpc",
+                                "description": "Calls a JSON-RPC method on the running Bevylite editor (http://127.0.0.1:15703). Live scene methods: editor/status, editor/scene_tree, editor/select, editor/spawn_primitive (cube, sphere, plane, cylinder, point_light, directional_light, spot_light, camera), editor/set_transform, editor/set_material, editor/delete_entity, editor/save_scene, editor/load_scene, editor/screenshot, editor/play_mode. Reflection & rendering: editor/components {entity|name}, editor/set_field {entity|name, component, field, value}, editor/add_component / editor/remove_component {component}, editor/component_types {filter}, editor/world {set:{field:value}}, editor/camera_rendering {features:{Bloom:true,...}, anti_aliasing, tonemapping, preview}, editor/mesh_rendering {cast_shadows, receive_shadows, wireframe, show_bounds}, editor/viewport {wireframe, grid, gizmos, bounds}, editor/time_scale {scale}, editor/cameras.",
+                                "inputSchema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "method": { "type": "string", "description": "RPC method, e.g. 'editor/camera_rendering'" },
+                                        "params": { "type": "object", "description": "Method parameters" }
+                                    },
+                                    "required": ["method"]
+                                }
+                            },
+                            {
                                 "name": "bevylite_status",
                                 "description": "Returns status, version, and architecture of Bevylite game engine editor.",
                                 "inputSchema": {
@@ -518,7 +530,16 @@ pub fn handle_mcp() {
                 let arguments = params.and_then(|p| p.get("arguments")).cloned().unwrap_or(json!({}));
 
                 let tool_result = match tool_name {
-                    "bevylite_status" => {
+                    "bevylite_editor_rpc" => {
+                        let method = arguments.get("method").and_then(|m| m.as_str()).unwrap_or("editor/status");
+                        let rpc_params = arguments.get("params").cloned().unwrap_or(json!({}));
+                        let text = match call_editor_rpc(method, rpc_params) {
+                            Ok(v) => serde_json::to_string_pretty(&v).unwrap_or_default(),
+                            Err(e) if e.starts_with('{') => format!("Editor returned an error: {e}"),
+                            Err(e) => format!("Could not reach the Bevylite editor on port 15703 ({e}). Is it running?"),
+                        };
+                        json!({ "content": [{ "type": "text", "text": text }] })
+                    }                    "bevylite_status" => {
                         json!({
                             "content": [{
                                 "type": "text",
@@ -1049,4 +1070,27 @@ pub fn log_mcp_bridge_event(action: &str, entity: &str, details: &str) {
     });
 
     let _ = fs::write("assets/.mcp_bridge.json", data.to_string());
+}
+
+/// Sends one JSON-RPC request to the running editor's loopback server.
+pub fn call_editor_rpc(method: &str, params: Value) -> Result<Value, String> {
+    use std::io::Read;
+    let body = json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }).to_string();
+    let mut stream = std::net::TcpStream::connect(("127.0.0.1", crate::remote::DEFAULT_EDITOR_BRP_PORT)).map_err(|e| e.to_string())?;
+    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(30)));
+    write!(
+        stream,
+        "POST / HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        body.len(),
+        body
+    )
+    .map_err(|e| e.to_string())?;
+    let mut response = String::new();
+    stream.read_to_string(&mut response).map_err(|e| e.to_string())?;
+    let json_start = response.find("\r\n\r\n").map(|i| i + 4).unwrap_or(0);
+    let reply: Value = serde_json::from_str(response[json_start..].trim()).map_err(|e| format!("Bad response: {e}"))?;
+    match reply.get("error") {
+        Some(err) => Err(err.to_string()),
+        None => Ok(reply.get("result").cloned().unwrap_or(Value::Null)),
+    }
 }

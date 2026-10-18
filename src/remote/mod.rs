@@ -28,6 +28,8 @@ use bevylite_lightmapper::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+mod features;
+
 use crate::core::play_mode::{PlayModeAction, PlayState};
 use crate::scene::{primitives, save_load, CurrentScene, EditorInternal, SceneEntity};
 
@@ -65,6 +67,7 @@ pub struct PrimitiveMeta {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct SavedSceneManifest {
+    #[serde(default)]
     pub entities: Vec<SavedEntityEntry>,
 }
 
@@ -563,7 +566,11 @@ fn dispatch_rpc_method(
             world.write_message(AppExit::Success);
             Ok(json!({ "status": "exiting" }))
         }
-        _ => Err((-32601, format!("Unknown RPC method '{method}'"))),
+        _ => {
+            ensure_in_editor(world);
+            features::dispatch(world, method, params)
+                .unwrap_or_else(|| Err((-32601, format!("Unknown RPC method '{method}'"))))
+        }
     }
 }
 
@@ -954,9 +961,41 @@ fn rpc_spawn_primitive(world: &mut World, params: Option<Value>) -> Result<Value
                 ))
                 .id()
         }
+        "spot_light" | "spot" => {
+            let default_pos = pos.unwrap_or(Vec3::new(0.0, 5.0, 3.0));
+            world
+                .spawn((
+                    SceneEntity,
+                    PrimitiveMeta { kind: "spot_light".to_string() },
+                    Name::new(name.clone()),
+                    SpotLight {
+                        color: color.unwrap_or(Color::WHITE),
+                        intensity: 400_000.0,
+                        range: 30.0,
+                        shadow_maps_enabled: true,
+                        ..default()
+                    },
+                    crate::scene::components::LightBakeMode::Mixed,
+                    Transform::from_translation(default_pos).looking_at(Vec3::ZERO, Vec3::Y),
+                ))
+                .id()
+        }
+        "camera" | "camera3d" => {
+            let default_pos = pos.unwrap_or(Vec3::new(0.0, 3.0, 8.0));
+            world
+                .spawn((
+                    SceneEntity,
+                    PrimitiveMeta { kind: "camera".to_string() },
+                    Name::new(name.clone()),
+                    Camera3d::default(),
+                    Camera { is_active: false, ..default() },
+                    Transform::from_translation(default_pos).looking_at(Vec3::ZERO, Vec3::Y),
+                ))
+                .id()
+        }
         _ => {
             return Err(invalid_params(format!(
-                "Unknown primitive kind '{kind}'. Valid kinds: 'cube', 'sphere', 'plane', 'cylinder', 'point_light', 'directional_light'"
+                "Unknown primitive kind '{kind}'. Valid kinds: 'cube', 'sphere', 'plane', 'cylinder', 'point_light', 'directional_light', 'spot_light', 'camera'"
             )))
         }
     };
@@ -1193,11 +1232,12 @@ fn rpc_save_scene(world: &mut World, params: Option<Value>) -> Result<Value, (i3
         Option<&MeshMaterial3d<StandardMaterial>>,
         Option<&PointLight>,
         Option<&DirectionalLight>,
+        Option<&SpotLight>,
     ), (With<SceneEntity>, Without<EditorInternal>)>();
 
     let raw: Vec<_> = q
         .iter(world)
-        .map(|(n, meta, tf, m, mat, pl, dl)| {
+        .map(|(n, meta, tf, m, mat, pl, dl, sl)| {
             let name = n
                 .map(|x| x.as_str().to_string())
                 .unwrap_or_else(|| "Entity".to_string());
@@ -1228,12 +1268,13 @@ fn rpc_save_scene(world: &mut World, params: Option<Value>) -> Result<Value, (i3
                 mat.map(|x| x.0.id()),
                 pl.copied(),
                 dl.copied(),
+                sl.copied(),
             )
         })
         .collect();
 
     let materials = world.get_resource::<Assets<StandardMaterial>>();
-    for (name, kind, tf, mat_id, pl, dl) in raw {
+    for (name, kind, tf, mat_id, pl, dl, sl) in raw {
         let mat_data = mat_id.and_then(|id| materials.and_then(|m| m.get(id)));
         let (light_intensity, light_range, light_color_rgb, shadows_enabled) =
             if let Some(p_light) = pl {
@@ -1243,6 +1284,14 @@ fn rpc_save_scene(world: &mut World, params: Option<Value>) -> Result<Value, (i3
                     Some(p_light.range),
                     Some([c.red, c.green, c.blue]),
                     Some(p_light.shadow_maps_enabled),
+                )
+            } else if let Some(s_light) = sl {
+                let c = s_light.color.to_srgba();
+                (
+                    Some(s_light.intensity),
+                    Some(s_light.range),
+                    Some([c.red, c.green, c.blue]),
+                    Some(s_light.shadow_maps_enabled),
                 )
             } else if let Some(d_light) = dl {
                 let c = d_light.color.to_srgba();
@@ -1283,6 +1332,7 @@ fn rpc_save_scene(world: &mut World, params: Option<Value>) -> Result<Value, (i3
     let manifest_path = sidecar_manifest_path(&path);
     std::fs::write(&manifest_path, &manifest_json)
         .map_err(|e| (-32004, format!("Failed to write scene manifest: {e}")))?;
+    crate::scene::environment::save_environment(world, &path).map_err(|e| (-32004, format!("Failed to write world settings: {e}")))?;
 
     if let Some(mut cur) = world.get_resource_mut::<CurrentScene>() {
         cur.file_path = Some(path.clone());
@@ -1334,7 +1384,12 @@ fn rpc_load_scene(world: &mut World, params: Option<Value>) -> Result<Value, (i3
     let mut loaded_count = 0usize;
 
     // Prefer deterministic manifest if present (preserves procedural meshes & materials)
-    let json_source = if manifest_path.exists() {
+    // A sidecar holding only world settings (written by UI saves) is not an entity manifest.
+    let manifest_has_entities = std::fs::read_to_string(&manifest_path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+        .is_some_and(|doc| doc.get("entities").is_some());
+    let json_source = if manifest_has_entities {
         Some(manifest_path)
     } else if path.extension().and_then(|e| e.to_str()) == Some("json") {
         Some(path.clone())
@@ -1424,6 +1479,34 @@ fn rpc_load_scene(world: &mut World, params: Option<Value>) -> Result<Value, (i3
                             shadow_maps_enabled: entry.shadows_enabled.unwrap_or(true),
                             ..default()
                         },
+                        tf,
+                    ));
+                    loaded_count += 1;
+                }
+                "spot_light" => {
+                    let c = entry.light_color_rgb.unwrap_or([1.0, 1.0, 1.0]);
+                    world.spawn((
+                        SceneEntity,
+                        PrimitiveMeta { kind: "spot_light".to_string() },
+                        Name::new(entry.name),
+                        SpotLight {
+                            color: Color::srgb(c[0], c[1], c[2]),
+                            intensity: entry.light_intensity.unwrap_or(400_000.0),
+                            range: entry.light_range.unwrap_or(30.0),
+                            shadow_maps_enabled: entry.shadows_enabled.unwrap_or(true),
+                            ..default()
+                        },
+                        tf,
+                    ));
+                    loaded_count += 1;
+                }
+                "camera" => {
+                    world.spawn((
+                        SceneEntity,
+                        PrimitiveMeta { kind: "camera".to_string() },
+                        Name::new(entry.name),
+                        Camera3d::default(),
+                        Camera { is_active: false, ..default() },
                         tf,
                     ));
                     loaded_count += 1;

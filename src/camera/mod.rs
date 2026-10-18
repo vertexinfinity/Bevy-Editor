@@ -25,6 +25,10 @@ use crate::scene::EditorInternal;
 #[derive(Component)]
 pub struct EditorCamera;
 
+/// Marker for the overlay camera that draws the editor's own UI panels.
+#[derive(Component)]
+pub struct EditorUiCamera;
+
 /// Component holding the state and configuration of the editor fly camera.
 #[derive(Component)]
 pub struct FlyCamera {
@@ -82,39 +86,13 @@ fn screenshot_on_f12(
     }
 }
 
-/// Manages viewport camera activation:
-/// - In Edit mode: ONLY the EditorCamera is active; scene cameras (FPS, Follow, RTS) are deactivated.
-/// - In Play mode: Scene camera is active (if present), and EditorCamera is deactivated.
+/// Authoring cameras remain on the editor window; runtime cameras belong to Game View.
 fn sync_camera_active_states(
-    play_state: Option<Res<PlayState>>,
     mut editor_cameras: Query<&mut Camera, (With<EditorCamera>, Without<crate::scene::SceneEntity>)>,
     mut scene_cameras: Query<&mut Camera, (With<crate::scene::SceneEntity>, Without<EditorCamera>)>,
 ) {
-    let is_playing = play_state.map_or(false, |s| *s == PlayState::Playing);
-
-    if is_playing {
-        let has_scene_cam = scene_cameras.iter().next().is_some();
-        if has_scene_cam {
-            for mut cam in &mut editor_cameras {
-                cam.is_active = false;
-            }
-            for mut cam in &mut scene_cameras {
-                cam.is_active = true;
-            }
-        } else {
-            for mut cam in &mut editor_cameras {
-                cam.is_active = true;
-            }
-        }
-    } else {
-        // Edit Mode: EditorCamera is always primary, scene cameras are suppressed
-        for mut cam in &mut editor_cameras {
-            cam.is_active = true;
-        }
-        for mut cam in &mut scene_cameras {
-            cam.is_active = false;
-        }
-    }
+    for mut camera in &mut editor_cameras { if !camera.is_active { camera.is_active = true; } }
+    for mut camera in &mut scene_cameras { if camera.is_active { camera.is_active = false; } }
 }
 
 /// Focus viewport camera on selected entity when `F` is pressed.
@@ -172,6 +150,27 @@ fn setup_editor_camera(mut commands: Commands) {
     let pitch = dir.y.asin();
     let yaw = (-dir.x).atan2(-dir.z);
 
+    // The editor UI gets its own overlay camera so viewport rendering settings (HDR, exposure,
+    // atmosphere, post-processing) never tint or wipe the panels. It renders last and
+    // alpha-blends onto the window, so it works whatever MSAA/HDR the viewport uses.
+    commands.spawn((
+        EditorInternal,
+        EditorUiCamera,
+        IsDefaultUiCamera,
+        Name::new("Editor UI Camera"),
+        Camera2d,
+        Camera {
+            order: 100,
+            clear_color: ClearColorConfig::Custom(Color::NONE),
+            output_mode: bevy::camera::CameraOutputMode::Write {
+                blend_state: Some(bevy::render::render_resource::BlendState::ALPHA_BLENDING),
+                clear_color: ClearColorConfig::None,
+            },
+            ..default()
+        },
+        Msaa::Off,
+    ));
+
     commands.spawn((
         EditorCamera,
         FlyCamera {
@@ -228,7 +227,7 @@ fn update_fly_camera(
     if mouse_button.just_released(MouseButton::Right) {
         fly_cam.is_active = false;
         if let Some(ref mut settings) = winit_settings {
-            settings.focused_mode = UpdateMode::reactive(std::time::Duration::from_secs(5));
+            settings.focused_mode = crate::core::play_mode::editor_winit_settings().focused_mode;
         }
         for (_, mut cursor_options) in &mut windows {
             cursor_options.grab_mode = CursorGrabMode::None;

@@ -11,6 +11,7 @@ pub mod plugin_manager;
 pub mod status_bar;
 pub mod theme;
 pub mod tools_bar;
+pub mod layout;
 
 pub use hub::EditorAppState;
 
@@ -28,6 +29,8 @@ fn setup_editor_fonts(
     let lucide_handle: Handle<Font> = asset_server.load("fonts/lucide.ttf");
 
     let mut font_sources = Vec::new();
+    #[cfg(windows)]
+    font_sources.push(bevy::text::FontSource::Family("Segoe UI".into()));
 
     // 1. Primary: Instant embedded default font (FiraMono - 0ms memory load for all UI text)
     font_sources.push(bevy::text::FontSource::Default);
@@ -78,6 +81,8 @@ impl Plugin for EditorUiPlugin {
             app.add_plugins(InspectorPlugin);
         }
 
+        app.add_plugins(inspector::InspectorFeaturesPlugin);
+
         app.insert_resource(UiTheme(create_dark_theme()))
             .init_state::<EditorAppState>()
             .init_resource::<hub::ActiveProject>()
@@ -88,6 +93,8 @@ impl Plugin for EditorUiPlugin {
             .init_resource::<menu::ActiveWorkspace>()
             .init_resource::<hierarchy::HierarchyState>()
             .init_resource::<inspector::InspectorState>()
+            .init_resource::<inspector::property_editor::PropertyEditState>()
+            .init_resource::<inspector::extensions::InspectorSectionRegistry>()
             .init_resource::<inspector::TransformTextEditState>()
             .init_resource::<asset_browser::AssetBrowserState>()
             .init_resource::<asset_browser::HoveredAssetDirectory>()
@@ -128,6 +135,9 @@ impl Plugin for EditorUiPlugin {
             .add_observer(inspector::select_entity_on_viewport_click)
             // PreStartup / Startup UI systems
             .add_systems(PreStartup, setup_editor_fonts)
+            .add_systems(Update, (inspector::script_card::rebuild_script_fields, inspector::property_editor::update_property_editor, inspector::material_card::update_material_sharing).chain().run_if(in_state(EditorAppState::InEditor)))
+            .add_systems(Update, inspector::relations_card::update_relations_card.run_if(in_state(EditorAppState::InEditor)))
+            .add_systems(PostUpdate, layout::update_workspace_layout.run_if(in_state(EditorAppState::InEditor)))
             .add_systems(OnEnter(EditorAppState::ProjectHub), hub::spawn_project_hub)
             .add_systems(OnExit(EditorAppState::ProjectHub), hub::despawn_project_hub)
             .add_systems(
@@ -160,10 +170,13 @@ impl Plugin for EditorUiPlugin {
                     tools_bar::update_active_tool_highlight,
                     tools_bar::update_viewport_chips,
                     hierarchy::update_hierarchy_list,
+                    hierarchy::update_hierarchy_selection,
+                    hierarchy::update_hierarchy_row_actions,
                     hierarchy::handle_spawn_primitives,
                     hierarchy::handle_hierarchy_collapse,
-                    hierarchy::handle_hierarchy_search_input,
+                    hierarchy::handle_hierarchy_search_input.run_if(crate::core::play_mode::in_edit_mode),
                     status_bar::update_status_bar,
+                    play_bar::update_time_scale_label,
                     plugin_manager::handle_toggle_plugin_manager,
                     plugin_manager::handle_filter_category_messages,
                     plugin_manager::update_plugin_scroll_indicator,
@@ -179,16 +192,17 @@ impl Plugin for EditorUiPlugin {
                     asset_browser::handle_create_asset_actions,
                     asset_browser::handle_set_default_scene,
                     inspector::handle_inspector_toggle_messages,
-                    inspector::handle_transform_nudges,
-                    inspector::handle_add_component_actions,
-                    inspector::handle_script_prop_actions,
-                    inspector::handle_material_nudges,
+                    inspector::handle_transform_nudges.run_if(crate::core::play_mode::in_edit_mode),
+                    inspector::handle_add_component_actions.run_if(crate::core::play_mode::in_edit_mode),
+                    inspector::handle_script_prop_actions.run_if(crate::core::play_mode::in_edit_mode),
+                    inspector::handle_material_nudges.run_if(crate::core::play_mode::in_edit_mode),
                     inspector::update_light_card,
                     inspector::handle_light_mode_actions,
-                    inspector::handle_transform_text_input,
+                    inspector::handle_transform_text_input.run_if(crate::core::play_mode::in_edit_mode),
                     inspector::update_active_scripts_panel,
                     inspector::handle_toggle_script_enabled,
                     inspector::update_clean_transform_labels,
+                    inspector::transform_card::update_transform_field_focus,
                     panel::systems::handle_panel_collapse_messages,
                     panel::systems::handle_panel_visibility_messages,
                 )

@@ -1559,7 +1559,7 @@ pub fn handle_switch_workspace(
 pub fn update_window_and_menu_title(
     active_project: Res<crate::ui::hub::ActiveProject>,
     current_scene: Res<CurrentScene>,
-    mut windows: Query<&mut Window>,
+    mut windows: Query<&mut Window, With<bevy::window::PrimaryWindow>>,
     mut title_labels: Query<&mut Text, With<WindowTitleLabel>>,
 ) {
     if !active_project.is_changed() && !current_scene.is_changed() {

@@ -95,7 +95,7 @@ pub(crate) fn spawn_add_comp_toggle(commands: &mut Commands, parent: Entity) {
             Node {
                 width: percent(100),
                 padding: UiRect::axes(px(8), px(5)),
-                border: UiRect::all(px(1)),
+                border: UiRect::ZERO,
                 border_radius: radius_button(),
                 align_items: AlignItems::Center,
                 ..default()

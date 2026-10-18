@@ -125,7 +125,7 @@ fn spawn_light_mode_btn(commands: &mut Commands, parent: Entity, label: &str, ac
             EditorInternal,
             Node {
                 padding: UiRect::axes(px(7), px(3)),
-                border: UiRect::all(px(1)),
+                border: UiRect::ZERO,
                 border_radius: BorderRadius::all(px(3)),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,

@@ -28,6 +28,9 @@ pub struct AssetItem {
 #[derive(Component)]
 pub struct ProjectExplorerDockRoot;
 
+#[derive(Component)]
+pub(super) struct AssetBrowserResizeHandle { origin: Option<(f32, f32)> }
+
 /// Marker component for the container listing all files.
 #[derive(Component)]
 pub struct AssetListContainer;
@@ -133,6 +136,8 @@ pub struct AssetBrowserState {
     pub is_collapsed: bool,
     pub current_dir: PathBuf,
     pub active_filter: AssetCategoryFilter,
+    pub width: f32,
+    pub height: f32,
 }
 
 impl Default for AssetBrowserState {
@@ -141,6 +146,8 @@ impl Default for AssetBrowserState {
             is_collapsed: false,
             current_dir: PathBuf::from("assets"),
             active_filter: AssetCategoryFilter::All,
+            width: 1200.0,
+            height: 210.0,
         }
     }
 }
@@ -155,11 +162,11 @@ pub fn spawn_asset_browser(mut commands: Commands, state: Res<AssetBrowserState>
                 position_type: PositionType::Absolute,
                 left: px(255), // offset cleanly from hierarchy dock
                 bottom: px(34), // above bottom status bar
-                width: px(520),
-                max_width: percent(55.0),
-                height: px(250),
-                max_height: percent(50.0),
-                border: UiRect::all(px(1)),
+                width: px(state.width),
+                max_width: percent(75.0),
+                height: px(state.height),
+                max_height: percent(70.0),
+                border: UiRect::top(px(1)),
                 border_radius: radius_panel(),
                 flex_direction: FlexDirection::Column,
                 overflow: Overflow::clip(),
@@ -169,6 +176,54 @@ pub fn spawn_asset_browser(mut commands: Commands, state: Res<AssetBrowserState>
             BorderColor::all(BORDER_SUBTLE),
         ))
         .id();
+
+    commands
+        .spawn((
+            EditorInternal,
+            AssetBrowserResizeHandle { origin: None },
+            GlobalZIndex(20),
+            Node {
+                position_type: PositionType::Absolute,
+                right: px(0),
+                top: px(0),
+                width: px(12),
+                height: px(12),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+            BackgroundColor(BORDER_SUBTLE),
+            Pickable::default(),
+            ChildOf(browser_root),
+        ))
+        .observe(|trigger: On<PointerOver>, mut color: Query<&mut BackgroundColor, With<AssetBrowserResizeHandle>>| {
+            if let Ok(mut color) = color.get_mut(trigger.entity) { *color = BackgroundColor(BORDER_ACCENT); }
+        })
+        .observe(|trigger: On<PointerOut>, mut color: Query<&mut BackgroundColor, With<AssetBrowserResizeHandle>>| {
+            if let Ok(mut color) = color.get_mut(trigger.entity) { *color = BackgroundColor(BORDER_SUBTLE); }
+        })
+         .observe(|_: On<bevy::picking::events::PointerDragStart>, root: Query<&ComputedNode, With<ProjectExplorerDockRoot>>, mut handle: Query<&mut AssetBrowserResizeHandle>| {
+            if let (Ok(root), Ok(mut handle)) = (root.single(), handle.single_mut()) {
+                let size = root.size() * root.inverse_scale_factor;
+                handle.origin = Some((size.x, size.y));
+            }
+        })
+        .observe(|drag: On<bevy::picking::events::PointerDrag>, window: Query<&Window, With<bevy::window::PrimaryWindow>>, state: Res<AssetBrowserState>, handle: Query<&AssetBrowserResizeHandle>, mut root: Query<&mut Node, With<ProjectExplorerDockRoot>>| {
+            if state.is_collapsed { return; }
+            let Ok(handle) = handle.single() else { return; };
+            let Some((origin_width, origin_height)) = handle.origin else { return; };
+            let (window_width, window_height) = window.single().map(|window| (window.width(), window.height())).unwrap_or((1600.0, 900.0));
+            let width = (origin_width + drag.distance.x).clamp(320.0, (window_width * 0.75).min(1200.0).max(320.0));
+            let height = (origin_height - drag.distance.y).clamp(160.0, (window_height * 0.70).min(720.0).max(160.0));
+            if let Ok(mut node) = root.single_mut() { node.width = px(width); node.height = px(height); }
+        })
+        .observe(|_: On<bevy::picking::events::PointerDragEnd>, mut state: ResMut<AssetBrowserState>, mut handle: Query<&mut AssetBrowserResizeHandle>, root: Query<&Node, With<ProjectExplorerDockRoot>>| {
+            if let Ok(node) = root.single() {
+                if let Val::Px(width) = node.width { state.width = width; }
+                if let Val::Px(height) = node.height { state.height = height; }
+            }
+            if let Ok(mut handle) = handle.single_mut() { handle.origin = None; }
+        });
 
     // 1. Explorer Header (Draggable / Dockable styling)
     let header = commands
@@ -183,7 +238,7 @@ pub fn spawn_asset_browser(mut commands: Commands, state: Res<AssetBrowserState>
                 border: UiRect::bottom(px(1)),
                 ..default()
             },
-            BackgroundColor(BG_CARD),
+            BackgroundColor(Color::NONE),
             BorderColor::all(BORDER_SUBTLE),
             ChildOf(browser_root),
         ))
@@ -223,7 +278,7 @@ pub fn spawn_asset_browser(mut commands: Commands, state: Res<AssetBrowserState>
             EditorInternal,
             Node {
                 padding: UiRect::axes(px(6), px(2)),
-                border: UiRect::all(px(1)),
+                border: UiRect::ZERO,
                 border_radius: radius_button(),
                 ..default()
             },
@@ -270,7 +325,7 @@ pub fn spawn_asset_browser(mut commands: Commands, state: Res<AssetBrowserState>
             EditorInternal,
             Node {
                 padding: UiRect::axes(px(6), px(2)),
-                border: UiRect::all(px(1)),
+                border: UiRect::ZERO,
                 border_radius: radius_button(),
                 ..default()
             },
@@ -331,7 +386,7 @@ pub fn spawn_asset_browser(mut commands: Commands, state: Res<AssetBrowserState>
             EditorInternal,
             Node {
                 padding: UiRect::axes(px(6), px(2)),
-                border: UiRect::all(px(1)),
+                border: UiRect::ZERO,
                 border_radius: radius_button(),
                 ..default()
             },
@@ -378,7 +433,7 @@ pub fn spawn_asset_browser(mut commands: Commands, state: Res<AssetBrowserState>
             EditorInternal,
             Node {
                 padding: UiRect::axes(px(6), px(2)),
-                border: UiRect::all(px(1)),
+                border: UiRect::ZERO,
                 border_radius: radius_button(),
                 ..default()
             },
@@ -449,7 +504,7 @@ pub fn spawn_asset_browser(mut commands: Commands, state: Res<AssetBrowserState>
                 Node {
                     padding: UiRect::axes(px(6), px(2)),
                     border_radius: radius_button(),
-                    border: UiRect::all(px(1)),
+                    border: UiRect::ZERO,
                     ..default()
                 },
                 BackgroundColor(if is_active { ACCENT_CYAN_DIM } else { BG_CARD }),
@@ -466,7 +521,7 @@ pub fn spawn_asset_browser(mut commands: Commands, state: Res<AssetBrowserState>
             .observe(move |trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
                 if !is_active {
                     if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                        *bg = BackgroundColor(BG_CARD);
+                        *bg = BackgroundColor(Color::NONE);
                     }
                 }
             })
@@ -497,7 +552,7 @@ pub fn spawn_asset_browser(mut commands: Commands, state: Res<AssetBrowserState>
             EditorInternal,
             Node {
                 padding: UiRect::axes(px(6), px(2)),
-                border: UiRect::all(px(1)),
+                border: UiRect::ZERO,
                 border_radius: BorderRadius::all(px(3)),
                 ..default()
             },
@@ -540,11 +595,13 @@ pub fn spawn_asset_browser(mut commands: Commands, state: Res<AssetBrowserState>
         .spawn((
             EditorInternal,
             AssetListContainer,
+            bevy::ui_widgets::ScrollArea,
             Node {
                 flex_direction: FlexDirection::Column,
                 padding: UiRect::all(px(6)),
                 row_gap: px(4),
-                overflow: Overflow::clip_y(),
+                overflow: Overflow::scroll_y(),
+                min_height: px(0),
                 flex_grow: 1.0,
                 ..default()
             },
@@ -631,13 +688,13 @@ fn populate_asset_list(
                 Node {
                     padding: UiRect::axes(px(8), px(3)),
                     border_radius: radius_button(),
-                    border: UiRect::all(px(1)),
+                    border: UiRect::ZERO,
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::SpaceBetween,
                     flex_direction: FlexDirection::Row,
                     ..default()
                 },
-                BackgroundColor(BG_CARD),
+                BackgroundColor(Color::NONE),
                 BorderColor::all(BORDER_SUBTLE),
                 ChildOf(parent),
             ))
@@ -649,7 +706,7 @@ fn populate_asset_list(
             })
             .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
                 if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                    *bg = BackgroundColor(BG_CARD);
+                    *bg = BackgroundColor(Color::NONE);
                 }
             })
             .observe(move |click: On<PointerClick>, query: Query<&AssetItem>, time: Res<Time>, mut last_click: ResMut<LastAssetClick>, mut spawn_writer: MessageWriter<SpawnAssetMessage>, mut nav_writer: MessageWriter<NavigateAssetFolderMessage>| {
@@ -722,7 +779,7 @@ fn populate_asset_list(
                         Node {
                             padding: UiRect::axes(px(6), px(2)),
                             border_radius: BorderRadius::all(px(3)),
-                            border: UiRect::all(px(1)),
+                            border: UiRect::ZERO,
                             ..default()
                         },
                         BackgroundColor(BG_INPUT),
@@ -774,13 +831,14 @@ pub fn handle_set_default_scene(
 }
 
 /// Handles toggling Project Explorer dock collapse, folder navigation, filter changes, and refresh requests.
-pub fn handle_explorer_dock_and_refresh(
+pub(super) fn handle_explorer_dock_and_refresh(
     mut toggle_msgs: MessageReader<ToggleExplorerDockMessage>,
     mut refresh_msgs: MessageReader<RefreshAssetBrowserMessage>,
     mut filter_msgs: MessageReader<SetAssetFilterMessage>,
     mut nav_msgs: MessageReader<NavigateAssetFolderMessage>,
     mut state: ResMut<AssetBrowserState>,
     mut dock_query: Query<&mut Node, With<ProjectExplorerDockRoot>>,
+    mut resize_handle_query: Query<&mut Node, (With<AssetBrowserResizeHandle>, Without<ProjectExplorerDockRoot>, Without<AssetListContainer>)>,
     mut list_query: Query<&mut Node, (With<AssetListContainer>, Without<ProjectExplorerDockRoot>)>,
     mut collapse_label_query: Query<&mut Text, (With<ExplorerCollapseLabel>, Without<DirectoryBreadcrumbLabel>)>,
     mut breadcrumb_query: Query<&mut Text, (With<DirectoryBreadcrumbLabel>, Without<ExplorerCollapseLabel>)>,
@@ -810,11 +868,12 @@ pub fn handle_explorer_dock_and_refresh(
 
     if state.is_changed() {
         if let Ok(mut dock_node) = dock_query.single_mut() {
-            if state.is_collapsed {
-                dock_node.height = px(30);
-            } else {
-                dock_node.height = px(270);
-            }
+            dock_node.width = px(state.width);
+            dock_node.height = px(if state.is_collapsed { 30.0 } else { state.height });
+        }
+
+        if let Ok(mut resize_node) = resize_handle_query.single_mut() {
+            resize_node.display = if state.is_collapsed { Display::None } else { Display::Flex };
         }
 
         if let Ok(mut list_node) = list_query.single_mut() {

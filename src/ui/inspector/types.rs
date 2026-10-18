@@ -39,6 +39,9 @@ impl Default for InspectorState {
 pub struct InspectorDockRoot;
 
 #[derive(Component)]
+pub struct InspectorResizeHandle { pub origin_width: Option<f32> }
+
+#[derive(Component)]
 pub struct CleanViewRoot;
 
 #[derive(Component)]

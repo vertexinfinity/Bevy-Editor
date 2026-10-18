@@ -8,15 +8,15 @@ use bevy::prelude::*;
 
 // --- Background Surfaces ---
 /// Deep obsidian canvas background
-pub const BG_SHELL: Color = Color::srgb(0.035, 0.04, 0.055);
+pub const BG_SHELL: Color = Color::srgb(0.063, 0.075, 0.094);
 /// Surface for docked panels (Hierarchy, Inspector, Asset Browser)
-pub const BG_PANEL: Color = Color::srgb(0.055, 0.065, 0.095);
+pub const BG_PANEL: Color = Color::srgb(0.086, 0.106, 0.133);
 /// Surface for cards, controls, and active containers
-pub const BG_CARD: Color = Color::srgb(0.08, 0.095, 0.14);
+pub const BG_CARD: Color = Color::srgb(0.102, 0.122, 0.149);
 /// Surface for hovered buttons and items
-pub const BG_HOVER: Color = Color::srgb(0.12, 0.145, 0.21);
+pub const BG_HOVER: Color = Color::srgb(0.157, 0.188, 0.224);
 /// Surface for input fields and numeric displays
-pub const BG_INPUT: Color = Color::srgb(0.06, 0.07, 0.105);
+pub const BG_INPUT: Color = Color::srgb(0.125, 0.149, 0.188);
 
 // --- Borders & Dividers ---
 /// Ultra-thin subtle border for quiet visual hierarchy
@@ -24,13 +24,13 @@ pub const BORDER_SUBTLE: Color = Color::srgba(1.0, 1.0, 1.0, 0.08);
 /// Slightly brighter border for cards and containers
 pub const BORDER_CARD: Color = Color::srgba(1.0, 1.0, 1.0, 0.13);
 /// Cyan border glow for active or selected items
-pub const BORDER_ACCENT: Color = Color::srgba(0.0, 0.949, 0.996, 0.45);
+pub const BORDER_ACCENT: Color = Color::srgba(0.271, 0.773, 0.859, 0.65);
 
 // --- Brand & Status Accents ---
 /// Bevylite signature electric cyan accent
-pub const ACCENT_CYAN: Color = Color::srgb(0.0, 0.949, 0.996);
+pub const ACCENT_CYAN: Color = Color::srgb(0.271, 0.773, 0.859);
 /// Dim cyan for subtle pill backgrounds
-pub const ACCENT_CYAN_DIM: Color = Color::srgba(0.0, 0.949, 0.996, 0.15);
+pub const ACCENT_CYAN_DIM: Color = Color::srgba(0.271, 0.773, 0.859, 0.13);
 /// Emerald green for Play Mode and success indicators
 pub const ACCENT_EMERALD: Color = Color::srgb(0.063, 0.725, 0.506);
 pub const ACCENT_EMERALD_HOVER: Color = Color::srgb(0.08, 0.82, 0.58);
@@ -49,9 +49,9 @@ pub const AXIS_Z: Color = Color::srgb(0.22, 0.741, 0.973);
 
 // --- Typography ---
 /// High-contrast white for primary text and titles
-pub const TEXT_PRIMARY: Color = Color::srgb(0.97, 0.98, 1.0);
+pub const TEXT_PRIMARY: Color = Color::srgb(0.898, 0.914, 0.941);
 /// Muted slate for secondary labels and descriptions
-pub const TEXT_SECONDARY: Color = Color::srgb(0.58, 0.64, 0.72);
+pub const TEXT_SECONDARY: Color = Color::srgb(0.573, 0.608, 0.667);
 /// Darker slate for shortcuts, badges, and disabled states
 pub const TEXT_MUTED: Color = Color::srgb(0.38, 0.44, 0.52);
 
@@ -73,7 +73,7 @@ pub fn radius_button() -> BorderRadius {
 
 #[inline]
 pub fn radius_pill() -> BorderRadius {
-    BorderRadius::all(Val::Px(12.0))
+    BorderRadius::all(Val::Px(3.0))
 }
 
 // Spacing Scale
@@ -93,7 +93,7 @@ pub const HEIGHT_STATUS_BAR: Val = Val::Px(26.0);
 // Font Size Scale
 pub const FONT_SIZE_SMALL: f32 = 11.5;
 pub const FONT_SIZE_NORMAL: f32 = 13.0;
-pub const FONT_SIZE_SECTION: f32 = 16.0;
+pub const FONT_SIZE_SECTION: f32 = 14.0;
 pub const FONT_SIZE_TITLE: f32 = 22.0;
 
 /// Loaded font assets with rich symbol & emoji coverage

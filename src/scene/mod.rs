@@ -2,9 +2,11 @@
 
 pub mod components;
 pub mod drag_drop;
+pub mod environment;
 pub mod primitives;
 pub mod save_load;
 pub mod serialization;
+pub mod showcase;
 
 use std::path::PathBuf;
 use bevy::prelude::*;
@@ -34,6 +36,7 @@ impl Plugin for SceneManagerPlugin {
                 components::AuthorableComponentsPlugin,
                 serialization::SceneSerializationPlugin,
                 drag_drop::DragDropPlugin,
+                environment::EnvironmentPlugin,
             ))
             .add_systems(Startup, primitives::spawn_starter_scene)
             .add_systems(Update, enforce_directional_light_limits);
@@ -43,7 +46,7 @@ impl Plugin for SceneManagerPlugin {
 /// Enforces safe directional light limits to prevent shadow map cascade overflow and GPU DeviceLost errors.
 pub fn enforce_directional_light_limits(
     mut commands: Commands,
-    mut dir_lights: Query<(Entity, &mut DirectionalLight, Option<&Name>)>,
+    mut dir_lights: Query<(Entity, &mut DirectionalLight, Option<&Name>), Without<crate::core::play_mode::PreviewEntity>>,
 ) {
     let mut sun_count = 0;
     for (entity, mut light, name) in &mut dir_lights {

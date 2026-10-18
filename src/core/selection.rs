@@ -78,6 +78,8 @@ pub struct ViewportGizmoSettings {
     pub show_bounds: bool,
     pub show_gizmos: bool,
     pub show_grid: bool,
+    /// Draw every mesh as wireframe (Bevy `WireframeConfig::global`).
+    pub show_wireframe: bool,
 }
 
 impl Default for ViewportGizmoSettings {
@@ -86,6 +88,7 @@ impl Default for ViewportGizmoSettings {
             show_bounds: true,
             show_gizmos: true,
             show_grid: true,
+            show_wireframe: false,
         }
     }
 }
@@ -142,6 +145,7 @@ pub fn handle_gizmo_toggle_shortcuts(
 /// Synchronizes `InspectorSelection` to Bevy's native interactive `TransformGizmoFocus`,
 /// and updates `TransformGizmoSettings` according to the active tool.
 pub fn sync_selection_and_tools_to_gizmo(
+    play_state: Res<crate::core::play_mode::PlayState>,
     inspector_sel: Res<InspectorSelection>,
     active_tool: Res<crate::core::tools::ActiveTool>,
     gizmo_settings: Res<ViewportGizmoSettings>,
@@ -150,7 +154,7 @@ pub fn sync_selection_and_tools_to_gizmo(
     mut commands: Commands,
 ) {
     // If gizmos are disabled globally, remove focus to hide handles
-    if !gizmo_settings.show_gizmos {
+    if !gizmo_settings.show_gizmos || *play_state != crate::core::play_mode::PlayState::Edit {
         for e in &focused_entities {
             commands.entity(e).remove::<bevy::gizmos::transform_gizmo::TransformGizmoFocus>();
         }

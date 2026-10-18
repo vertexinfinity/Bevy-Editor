@@ -53,6 +53,10 @@ pub fn save_world_to_scene(world: &World, path: &Path) -> Result<(), Box<dyn std
     let mut file = File::create(path)?;
     file.write_all(serialized_scene.as_bytes())?;
 
+    if let Err(error) = super::environment::save_environment(world, path) {
+        warn!("Could not save world environment next to {:?}: {error}", path);
+    }
+
     info!("Saved scene ({} entities) to {:?}", dynamic_world.entities.len(), path);
     Ok(())
 }

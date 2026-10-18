@@ -12,6 +12,7 @@ use bevy::{
     },
     prelude::*,
 };
+use std::collections::HashMap;
 use crate::scene::{EditorInternal, SceneEntity};
 use crate::ui::theme::*;
 
@@ -25,6 +26,9 @@ pub struct HierarchyState {
     /// True only while the user has clicked into the search box.
     pub search_focused: bool,
     pub search_hovered: bool,
+    /// Entities whose child rows are currently hidden in the hierarchy.
+    pub collapsed_entities: std::collections::HashSet<Entity>,
+    pub has_initialized_tree: bool,
 }
 
 impl Default for HierarchyState {
@@ -35,6 +39,8 @@ impl Default for HierarchyState {
             filter: String::new(),
             search_focused: false,
             search_hovered: false,
+            collapsed_entities: std::collections::HashSet::new(),
+            has_initialized_tree: false,
         }
     }
 }
@@ -42,6 +48,9 @@ impl Default for HierarchyState {
 // Markers for UI elements
 #[derive(Component)]
 pub struct HierarchyDockRoot;
+
+#[derive(Component)]
+struct HierarchyResizeHandle { origin_width: Option<f32> }
 
 #[derive(Component)]
 pub struct HierarchyTitleGroup;
@@ -67,6 +76,18 @@ pub struct HierarchySearchText;
 #[derive(Component)]
 #[allow(dead_code)]
 pub struct HierarchyEntityRow(pub Entity);
+
+#[derive(Component)]
+pub(crate) struct HierarchyRowActions { row: Entity, persistent: bool }
+
+#[derive(Component)]
+pub(super) struct HierarchyCategoryHeader;
+
+#[derive(Component)]
+pub(super) struct HierarchyEntityLabel(pub Entity, pub bool);
+
+#[derive(Component)]
+pub(super) struct HierarchyEntityIcon(pub Entity);
 
 // Messages
 #[derive(Message, Clone, Copy, Debug)]
@@ -124,6 +145,45 @@ pub fn spawn_hierarchy_panel(mut commands: Commands) {
             BorderColor::all(BORDER_SUBTLE),
         ))
         .id();
+
+    commands
+        .spawn((
+            EditorInternal,
+            HierarchyResizeHandle { origin_width: None },
+            GlobalZIndex(20),
+            Node {
+                position_type: PositionType::Absolute,
+                right: px(0),
+                top: px(0),
+                bottom: px(0),
+                width: px(6),
+                ..default()
+            },
+            BackgroundColor(BORDER_SUBTLE),
+            Pickable::default(),
+            ChildOf(dock_root),
+        ))
+        .observe(|trigger: On<PointerOver>, mut color: Query<&mut BackgroundColor, With<HierarchyResizeHandle>>| {
+            if let Ok(mut color) = color.get_mut(trigger.entity) { *color = BackgroundColor(BORDER_ACCENT); }
+        })
+        .observe(|trigger: On<PointerOut>, mut color: Query<&mut BackgroundColor, With<HierarchyResizeHandle>>| {
+            if let Ok(mut color) = color.get_mut(trigger.entity) { *color = BackgroundColor(BORDER_SUBTLE); }
+        })
+        .observe(|_: On<bevy::picking::events::PointerDragStart>, state: Res<HierarchyState>, mut handle: Query<&mut HierarchyResizeHandle>| {
+            if let Ok(mut handle) = handle.single_mut() { handle.origin_width = Some(state.width); }
+        })
+        .observe(|drag: On<bevy::picking::events::PointerDrag>, window: Query<&Window, With<bevy::window::PrimaryWindow>>, state: Res<HierarchyState>, handle: Query<&HierarchyResizeHandle>, mut dock: Query<&mut Node, With<HierarchyDockRoot>>| {
+            if state.is_collapsed { return; }
+            let Ok(handle) = handle.single() else { return; };
+            let Some(origin) = handle.origin_width else { return; };
+            let max_width = window.single().map(|window| (window.width() * 0.35).min(500.0)).unwrap_or(500.0);
+            let width = (origin + drag.distance.x).clamp(180.0, max_width.max(180.0));
+            if let Ok(mut node) = dock.single_mut() { node.width = px(width); }
+        })
+        .observe(|_: On<bevy::picking::events::PointerDragEnd>, mut state: ResMut<HierarchyState>, mut handle: Query<&mut HierarchyResizeHandle>, dock: Query<&Node, With<HierarchyDockRoot>>| {
+            if let Ok(node) = dock.single() { if let Val::Px(width) = node.width { state.width = width; } }
+            if let Ok(mut handle) = handle.single_mut() { handle.origin_width = None; }
+        });
 
     // 1. Header Bar
     let header = commands
@@ -196,7 +256,7 @@ pub fn spawn_hierarchy_panel(mut commands: Commands) {
             EditorInternal,
             Node {
                 padding: UiRect::axes(px(6), px(2)),
-                border: UiRect::all(px(1)),
+                border: UiRect::ZERO,
                 border_radius: BorderRadius::all(px(3)),
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
@@ -214,15 +274,6 @@ pub fn spawn_hierarchy_panel(mut commands: Commands) {
         .observe(|trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
             if let Ok(mut bg) = bg.get_mut(trigger.entity) {
                 *bg = BackgroundColor(BG_INPUT);
-            }
-        })
-        .observe(|drag: On<bevy::picking::events::PointerDrag>, mut state: ResMut<HierarchyState>, mut dock_query: Query<&mut Node, With<HierarchyDockRoot>>| {
-            if !state.is_collapsed {
-                let new_width = (state.width + drag.distance.x * 0.05).clamp(180.0, 500.0);
-                state.width = new_width;
-                if let Ok(mut node) = dock_query.single_mut() {
-                    node.width = px(new_width);
-                }
             }
         })
         .observe(|click: On<PointerClick>, mut writer: MessageWriter<ToggleHierarchyDockMessage>| {
@@ -315,7 +366,7 @@ pub fn spawn_hierarchy_panel(mut commands: Commands) {
         .spawn((
             EditorInternal,
             Node {
-                height: px(26),
+                height: px(28),
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
                 column_gap: px(4),
@@ -335,7 +386,7 @@ pub fn spawn_hierarchy_panel(mut commands: Commands) {
                 flex_direction: FlexDirection::Column,
                 row_gap: px(2),
                 padding: UiRect::all(px(4)),
-                border: UiRect::all(px(1)),
+                border: UiRect::ZERO,
                 border_radius: radius_card(),
                 max_height: px(380),
                 overflow: Overflow::clip_y(),
@@ -385,13 +436,15 @@ pub fn spawn_hierarchy_panel(mut commands: Commands) {
     commands.spawn((
         EditorInternal,
         HierarchyListContainer,
+            bevy::ui_widgets::ScrollArea,
         Node {
             flex_grow: 1.0,
             width: percent(100.0),
             flex_direction: FlexDirection::Column,
             padding: UiRect::axes(px(6), px(6)),
             row_gap: px(3),
-            overflow: Overflow::clip_y(),
+            overflow: Overflow::scroll_y(),
+                min_height: px(0),
             ..default()
         },
         ChildOf(dock_root),
@@ -409,7 +462,7 @@ fn spawn_primitive_btn(
             EditorInternal,
             Node {
                 padding: UiRect::axes(px(6), px(2)),
-                border: UiRect::all(px(1)),
+                border: UiRect::ZERO,
                 border_radius: radius_button(),
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
@@ -455,7 +508,7 @@ fn spawn_hierarchy_add_toggle(commands: &mut Commands, parent: Entity, menu: Ent
             EditorInternal,
             Node {
                 padding: UiRect::axes(px(8), px(3)),
-                border: UiRect::all(px(1)),
+                border: UiRect::ZERO,
                 border_radius: radius_button(),
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
@@ -588,7 +641,7 @@ impl HierarchyCategory {
 
 /// Updates the hierarchy tree view to reflect all active `SceneEntity` components
 /// grouped neatly into categories (Environment, Gameplay, Props).
-pub fn update_hierarchy_list(
+pub(super) fn update_hierarchy_list(
     mut commands: Commands,
     entities_query: Query<(
         Entity,
@@ -604,31 +657,34 @@ pub fn update_hierarchy_list(
     ), With<SceneEntity>>,
     scene_entities: Query<(), With<SceneEntity>>,
     selection: Res<InspectorSelection>,
-    state: Res<HierarchyState>,
+    mut state: ResMut<HierarchyState>,
     mut count_label_query: Query<&mut Text, (With<HierarchyCountLabel>, Without<HierarchySearchText>)>,
     list_container_query: Query<Entity, With<HierarchyListContainer>>,
-    existing_rows: Query<Entity, With<HierarchyEntityRow>>,
+    existing_rows: Query<Entity, Or<(With<HierarchyEntityRow>, With<HierarchyCategoryHeader>)>>,
     _visibility_query: Query<&Visibility>,
     vis_changed: Query<(), (With<SceneEntity>, Changed<Visibility>)>,
     added: Query<(), Added<SceneEntity>>,
     mut removed: RemovedComponents<SceneEntity>,
     mut first: Local<bool>,
+    mut cached_entity_count: Local<Option<usize>>,
 ) {
-    let count = entities_query.iter().count();
-    if let Ok(mut count_text) = count_label_query.single_mut() {
-        count_text.0 = format!("{}", count);
-    }
-
     let Ok(container_ent) = list_container_query.single() else {
         return;
     };
 
     let removed_any = removed.read().count() > 0;
+    let added_any = !added.is_empty();
+    if cached_entity_count.is_none() || added_any || removed_any {
+        let count = entities_query.iter().count();
+        *cached_entity_count = Some(count);
+        if let Ok(mut count_text) = count_label_query.single_mut() {
+            count_text.0 = count.to_string();
+        }
+    }
     if *first
-        && !selection.is_changed()
         && !state.is_changed()
         && vis_changed.is_empty()
-        && added.is_empty()
+        && !added_any
         && !removed_any
     {
         return;
@@ -640,20 +696,18 @@ pub fn update_hierarchy_list(
         commands.entity(row).despawn();
     }
 
-    // Classify entities into categories - only show root level entities to prevent lag
-    let mut items: Vec<(HierarchyCategory, Entity, String, &'static str, bool, bool)> = Vec::new();
+    // Build a parent-to-children index so the panel reflects Bevy's actual
+    // ChildOf hierarchy instead of flattening scene entities into a list.
+    let mut entries: HashMap<Entity, (HierarchyCategory, String, &'static str, bool, Option<Entity>)> = HashMap::new();
+    let mut children: HashMap<Entity, Vec<Entity>> = HashMap::new();
+    let mut roots = Vec::new();
 
     for (entity, name, dir_light, point_light, mesh, script, gameplay_tag, vis, child_of, camera) in &entities_query {
-        // Skip child entities if parent is also a SceneEntity (keep collapsed to root)
-        if let Some(child) = child_of {
-            if scene_entities.contains(child.parent()) {
-                continue;
-            }
-        }
-
         let is_hidden = vis == Some(&Visibility::Hidden);
         let name_str = name.map(|n| n.as_str()).unwrap_or("Entity").to_string();
-        let is_selected = selection.0 == Some(entity);
+        let parent = child_of
+            .map(ChildOf::parent)
+            .filter(|parent| scene_entities.contains(*parent));
 
         let (category, icon) = if camera.is_some() || name_str.to_lowercase().contains("camera") {
             (HierarchyCategory::Gameplay, "📷")
@@ -669,22 +723,78 @@ pub fn update_hierarchy_list(
             (HierarchyCategory::Props, "📦")
         };
 
-        let filter_query = state.filter.trim().to_lowercase();
-        if !filter_query.is_empty() && !name_str.to_lowercase().contains(&filter_query) {
-            continue;
+        entries.insert(entity, (category, name_str, icon, is_hidden, parent));
+        if let Some(parent) = parent {
+            children.entry(parent).or_default().push(entity);
+        } else {
+            roots.push(entity);
         }
-
-        items.push((category, entity, name_str, icon, is_hidden, is_selected));
     }
 
-    // Sort by category first, then entity name
-    items.sort_by(|a, b| {
-        a.0.cmp(&b.0).then_with(|| a.2.to_lowercase().cmp(&b.2.to_lowercase()))
+    // Show the top-level scene while keeping nested branches closed on first
+    // open. Large imported hierarchies therefore don't spawn every row at once.
+    if !state.has_initialized_tree {
+        for parent in children.keys() {
+            if !roots.contains(parent) {
+                state.collapsed_entities.insert(*parent);
+            }
+        }
+        state.has_initialized_tree = true;
+    }
+
+    let name_of = |entity: &Entity| entries.get(entity).map(|entry| entry.1.to_lowercase()).unwrap_or_default();
+    roots.sort_by(|a, b| {
+        let a_entry = entries.get(a);
+        let b_entry = entries.get(b);
+        a_entry.map(|entry| entry.0).cmp(&b_entry.map(|entry| entry.0))
+            .then_with(|| name_of(a).cmp(&name_of(b)))
     });
+    for siblings in children.values_mut() {
+        siblings.sort_by_key(&name_of);
+    }
+
+    // Flatten only the expanded part of the tree for Bevy UI rendering.
+    // Searching expands ancestor paths so nested matches remain discoverable.
+    let filter = state.filter.trim().to_lowercase();
+    let mut items: Vec<(HierarchyCategory, Entity, String, &'static str, bool, bool, usize, bool, bool)> = Vec::new();
+    fn append_tree(
+        entity: Entity,
+        root_category: HierarchyCategory,
+        depth: usize,
+        entries: &HashMap<Entity, (HierarchyCategory, String, &'static str, bool, Option<Entity>)>,
+        children: &HashMap<Entity, Vec<Entity>>,
+        collapsed: &std::collections::HashSet<Entity>,
+        filter: &str,
+        selection: Option<Entity>,
+        output: &mut Vec<(HierarchyCategory, Entity, String, &'static str, bool, bool, usize, bool, bool)>,
+        visited: &mut std::collections::HashSet<Entity>,
+    ) {
+        if !visited.insert(entity) { return; }
+        let Some((_, name, icon, hidden, _)) = entries.get(&entity) else { return; };
+        let child_entities = children.get(&entity).map(Vec::as_slice).unwrap_or(&[]);
+        let has_children = !child_entities.is_empty();
+        let is_collapsed = collapsed.contains(&entity);
+        let matches = filter.is_empty() || name.to_lowercase().contains(filter);
+
+        if matches {
+            output.push((root_category, entity, name.clone(), icon, *hidden, selection == Some(entity), depth, has_children, is_collapsed));
+        }
+
+        if filter.is_empty() && is_collapsed { return; }
+        for child in child_entities {
+            append_tree(*child, root_category, depth + 1, entries, children, collapsed, filter, selection, output, visited);
+        }
+    }
+
+    let mut visited = std::collections::HashSet::new();
+    for root in roots {
+        let Some((category, ..)) = entries.get(&root) else { continue; };
+        append_tree(root, *category, 0, &entries, &children, &state.collapsed_entities, &filter, selection.0, &mut items, &mut visited);
+    }
 
     let mut current_category: Option<HierarchyCategory> = None;
 
-    for (category, entity, name_str, icon, is_hidden, is_selected) in items {
+    for (category, entity, name_str, icon, is_hidden, is_selected, depth, has_children, is_tree_collapsed) in items {
         // Render Category Header if changed
         if current_category != Some(category) {
             current_category = Some(category);
@@ -692,7 +802,7 @@ pub fn update_hierarchy_list(
             let header_row = commands
                 .spawn((
                     EditorInternal,
-                    HierarchyEntityRow(entity), // marker so it gets despawned on refresh
+                    HierarchyCategoryHeader,
                     Node {
                         width: percent(100.0),
                         height: px(22),
@@ -723,7 +833,7 @@ pub fn update_hierarchy_list(
         let row_bg = if is_selected {
             ACCENT_CYAN_DIM
         } else {
-            BG_CARD
+            Color::NONE
         };
 
         let row_border = if is_selected {
@@ -744,15 +854,17 @@ pub fn update_hierarchy_list(
             .spawn((
                 EditorInternal,
                 HierarchyEntityRow(entity),
+                bevy::picking::hover::Hovered::default(),
                 Node {
                     width: percent(100.0),
-                    height: px(26),
+                    height: px(28),
                     flex_direction: FlexDirection::Row,
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::SpaceBetween,
-                    padding: UiRect::axes(px(10), px(2)),
-                    margin: UiRect::left(px(6)), // Indent under category
-                    border: UiRect::all(px(1)),
+                    padding: UiRect { left: px(10.0 + depth as f32 * 14.0), right: px(6), top: px(2), bottom: px(2) },
+                    flex_shrink: 0.0,
+                    min_width: px(0),
+                    border: UiRect::ZERO,
                     border_radius: radius_button(),
                     ..default()
                 },
@@ -760,17 +872,17 @@ pub fn update_hierarchy_list(
                 BorderColor::all(row_border),
                 ChildOf(container_ent),
             ))
-            .observe(move |trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
-                if !is_selected {
+            .observe(|trigger: On<PointerOver>, rows: Query<&HierarchyEntityRow>, selection: Res<InspectorSelection>, mut bg: Query<&mut BackgroundColor>| {
+                if rows.get(trigger.entity).is_ok_and(|row| selection.0 != Some(row.0)) {
                     if let Ok(mut bg) = bg.get_mut(trigger.entity) {
                         *bg = BackgroundColor(BG_HOVER);
                     }
                 }
             })
-            .observe(move |trigger: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| {
-                if !is_selected {
+            .observe(|trigger: On<PointerOut>, rows: Query<&HierarchyEntityRow>, selection: Res<InspectorSelection>, mut bg: Query<&mut BackgroundColor>| {
+                if rows.get(trigger.entity).is_ok_and(|row| selection.0 != Some(row.0)) {
                     if let Ok(mut bg) = bg.get_mut(trigger.entity) {
-                        *bg = BackgroundColor(BG_CARD);
+                        *bg = BackgroundColor(Color::NONE);
                     }
                 }
             })
@@ -791,14 +903,59 @@ pub fn update_hierarchy_list(
                     flex_direction: FlexDirection::Row,
                     align_items: AlignItems::Center,
                     column_gap: px(6),
+                    flex_grow: 1.0,
+                    min_width: px(0),
+                    overflow: Overflow::clip(),
                     ..default()
                 },
                 ChildOf(row),
             ))
             .id();
 
+        if has_children {
+            let disclosure = commands
+                .spawn((
+                    EditorInternal,
+                    Node {
+                        width: px(14),
+                        height: px(18),
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        ..default()
+                    },
+                    Pickable::default(),
+                    ChildOf(label_group),
+                ))
+                .observe(move |mut click: On<PointerClick>, mut hierarchy_state: ResMut<HierarchyState>| {
+                    if click.button == PointerButton::Primary {
+                        click.propagate(false);
+                        if !hierarchy_state.collapsed_entities.remove(&entity) {
+                            hierarchy_state.collapsed_entities.insert(entity);
+                        }
+                    }
+                })
+                .id();
+
+            commands.spawn((
+                EditorInternal,
+                Pickable::IGNORE,
+                Text::new(if is_tree_collapsed { "›" } else { "⌄" }),
+                TextFont { font_size: bevy::text::FontSize::Px(12.0), ..default() },
+                TextColor(TEXT_SECONDARY),
+                ChildOf(disclosure),
+            ));
+        } else {
+            commands.spawn((
+                EditorInternal,
+                Pickable::IGNORE,
+                Node { width: px(14), flex_shrink: 0.0, ..default() },
+                ChildOf(label_group),
+            ));
+        }
+
         commands.spawn((
             EditorInternal,
+            HierarchyEntityIcon(entity),
             Pickable::IGNORE,
             Text::new(icon),
             TextFont {
@@ -811,24 +968,29 @@ pub fn update_hierarchy_list(
 
         commands.spawn((
             EditorInternal,
+            HierarchyEntityLabel(entity, is_hidden),
             Pickable::IGNORE,
-            Text::new(if is_hidden { format!("{name_str} (Hidden)") } else { name_str }),
+            TextLayout::no_wrap(),
+            Text::new(name_str),
             TextFont {
-                font_size: bevy::text::FontSize::Px(11.5),
+                font_size: bevy::text::FontSize::Px(13.0),
                 ..default()
             },
             TextColor(text_color),
             ChildOf(label_group),
         ));
 
-        // Right Group: Visibility Eye Toggle + Entity ID badge
+        // Right: quiet visibility control and contextual delete action
         let right_group = commands
             .spawn((
                 EditorInternal,
+                HierarchyRowActions { row, persistent: is_hidden },
                 Node {
+                    display: if is_selected || is_hidden { Display::Flex } else { Display::None },
                     flex_direction: FlexDirection::Row,
                     align_items: AlignItems::Center,
                     column_gap: px(6),
+                    flex_shrink: 0.0,
                     ..default()
                 },
                 ChildOf(row),
@@ -844,7 +1006,7 @@ pub fn update_hierarchy_list(
                     border_radius: BorderRadius::all(px(2)),
                     ..default()
                 },
-                BackgroundColor(if is_hidden { BG_INPUT } else { ACCENT_CYAN_DIM }),
+                BackgroundColor(Color::NONE),
                 ChildOf(right_group),
             ))
             .observe(move |mut click: On<PointerClick>,
@@ -885,26 +1047,13 @@ pub fn update_hierarchy_list(
         commands.spawn((
             EditorInternal,
             Pickable::IGNORE,
-            Text::new(if is_hidden { "OFF" } else { "ON" }),
+            Text::new(if is_hidden { "◌" } else { "◉" }),
             TextFont {
                 font_size: bevy::text::FontSize::Px(9.0),
                 ..default()
             },
-            TextColor(if is_hidden { TEXT_MUTED } else { ACCENT_CYAN }),
+            TextColor(TEXT_SECONDARY),
             ChildOf(vis_btn),
-        ));
-
-        // Entity ID badge
-        commands.spawn((
-            EditorInternal,
-            Pickable::IGNORE,
-            Text::new(format!("#{}", entity.index())),
-            TextFont {
-                font_size: bevy::text::FontSize::Px(9.5),
-                ..default()
-            },
-            TextColor(TEXT_MUTED),
-            ChildOf(right_group),
         ));
 
         let delete_btn = commands
@@ -915,7 +1064,7 @@ pub fn update_hierarchy_list(
                     border_radius: BorderRadius::all(px(2)),
                     ..default()
                 },
-                BackgroundColor(BG_INPUT),
+                BackgroundColor(Color::NONE),
                 ChildOf(right_group),
             ))
             .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
@@ -947,6 +1096,54 @@ pub fn update_hierarchy_list(
             TextColor(TEXT_MUTED),
             ChildOf(delete_btn),
         ));
+    }
+}
+
+/// Updates selected-row visuals in place without rebuilding hierarchy entities.
+pub(crate) fn update_hierarchy_row_actions(
+    selection: Res<InspectorSelection>,
+    rows: Query<(&HierarchyEntityRow, &bevy::picking::hover::Hovered)>,
+    mut actions: Query<(&HierarchyRowActions, &mut Node)>,
+) {
+    for (action, mut node) in &mut actions {
+        let show = action.persistent || rows.get(action.row).is_ok_and(|(row, hover)| hover.get() || selection.0 == Some(row.0));
+        let display = if show { Display::Flex } else { Display::None };
+        if node.display != display { node.display = display; }
+    }
+}
+
+pub(super) fn update_hierarchy_selection(
+    selection: Res<InspectorSelection>,
+    mut rows: Query<(&HierarchyEntityRow, &mut BackgroundColor, &mut BorderColor)>,
+    mut labels: Query<(&HierarchyEntityLabel, &mut TextColor)>,
+    mut icons: Query<(&HierarchyEntityIcon, &mut TextColor), Without<HierarchyEntityLabel>>,
+) {
+    if !selection.is_changed() {
+        return;
+    }
+
+    for (row, mut background, mut border) in &mut rows {
+        let selected = selection.0 == Some(row.0);
+        *background = BackgroundColor(if selected { ACCENT_CYAN_DIM } else { Color::NONE });
+        *border = BorderColor::all(if selected { BORDER_ACCENT } else { BORDER_SUBTLE });
+    }
+
+    for (label, mut color) in &mut labels {
+        *color = TextColor(if selection.0 == Some(label.0) {
+            ACCENT_CYAN
+        } else if label.1 {
+            TEXT_MUTED
+        } else {
+            TEXT_PRIMARY
+        });
+    }
+
+    for (icon, mut color) in &mut icons {
+        *color = TextColor(if selection.0 == Some(icon.0) {
+            ACCENT_CYAN
+        } else {
+            TEXT_SECONDARY
+        });
     }
 }
 

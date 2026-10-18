@@ -24,6 +24,7 @@ pub enum ViewportChipKind {
     Gizmos,
     Bounds,
     Grid,
+    Wireframe,
 }
 
 #[derive(Component)]
@@ -43,7 +44,7 @@ pub fn spawn_tools_bar(mut commands: Commands, registry: Res<ToolRegistry>) {
                 align_items: AlignItems::Center,
                 padding: UiRect::axes(px(4), px(2)),
                 column_gap: px(4),
-                border: UiRect::all(px(1)),
+                border: UiRect::ZERO,
                 border_radius: radius_card(),
                 ..default()
             },
@@ -113,6 +114,7 @@ pub fn spawn_tools_bar(mut commands: Commands, registry: Res<ToolRegistry>) {
         (ViewportChipKind::Gizmos, "Gizmos: On", true),
         (ViewportChipKind::Bounds, "Bounds: On", true),
         (ViewportChipKind::Grid, "Grid: On", true),
+        (ViewportChipKind::Wireframe, "Wireframe: Off", false),
     ];
 
     for (kind, label, active) in toggles {
@@ -123,7 +125,7 @@ pub fn spawn_tools_bar(mut commands: Commands, registry: Res<ToolRegistry>) {
                 Node {
                     padding: UiRect::axes(px(6), px(2)),
                     border_radius: radius_button(),
-                    border: UiRect::all(px(1)),
+                    border: UiRect::ZERO,
                     margin: UiRect::left(px(4)),
                     ..default()
                 },
@@ -142,6 +144,7 @@ pub fn spawn_tools_bar(mut commands: Commands, registry: Res<ToolRegistry>) {
                         ViewportChipKind::Gizmos => settings.show_gizmos,
                         ViewportChipKind::Bounds => settings.show_bounds,
                         ViewportChipKind::Grid => settings.show_grid,
+                        ViewportChipKind::Wireframe => settings.show_wireframe,
                     };
                     *bg = BackgroundColor(if active { ACCENT_CYAN_DIM } else { BG_INPUT });
                 }
@@ -152,6 +155,7 @@ pub fn spawn_tools_bar(mut commands: Commands, registry: Res<ToolRegistry>) {
                         ViewportChipKind::Gizmos => settings.show_gizmos = !settings.show_gizmos,
                         ViewportChipKind::Bounds => settings.show_bounds = !settings.show_bounds,
                         ViewportChipKind::Grid => settings.show_grid = !settings.show_grid,
+                        ViewportChipKind::Wireframe => settings.show_wireframe = !settings.show_wireframe,
                     }
                 }
             })
@@ -183,7 +187,7 @@ pub fn spawn_tools_bar(mut commands: Commands, registry: Res<ToolRegistry>) {
                 flex_direction: FlexDirection::Column,
                 padding: UiRect::all(SPACE_MICRO),
                 row_gap: SPACE_MICRO,
-                border: UiRect::all(px(1)),
+                border: UiRect::ZERO,
                 border_radius: radius_panel(),
                 ..default()
             },
@@ -203,7 +207,7 @@ pub fn spawn_tools_bar(mut commands: Commands, registry: Res<ToolRegistry>) {
                 Node {
                     width: px(30),
                     height: px(30),
-                    border: UiRect::all(px(1)),
+                    border: UiRect::ZERO,
                     border_radius: radius_button(),
                     justify_content: JustifyContent::Center,
                     align_items: AlignItems::Center,
@@ -285,6 +289,7 @@ pub fn update_viewport_chips(
             ViewportChipKind::Gizmos => settings.show_gizmos,
             ViewportChipKind::Bounds => settings.show_bounds,
             ViewportChipKind::Grid => settings.show_grid,
+                        ViewportChipKind::Wireframe => settings.show_wireframe,
         };
         *bg = BackgroundColor(if active { ACCENT_CYAN_DIM } else { BG_INPUT });
         *border = BorderColor::all(if active { BORDER_ACCENT } else { BORDER_SUBTLE });
@@ -295,6 +300,7 @@ pub fn update_viewport_chips(
             ViewportChipKind::Gizmos => ("Gizmos", settings.show_gizmos),
             ViewportChipKind::Bounds => ("Bounds", settings.show_bounds),
             ViewportChipKind::Grid => ("Grid", settings.show_grid),
+            ViewportChipKind::Wireframe => ("Wireframe", settings.show_wireframe),
         };
         text.0 = format!("{}: {}", name, if active { "On" } else { "Off" });
         *color = TextColor(if active { ACCENT_CYAN } else { TEXT_MUTED });

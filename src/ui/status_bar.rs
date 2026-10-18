@@ -434,11 +434,11 @@ pub fn update_status_bar(
     if let Some(state) = play_state.as_deref() {
         if *state == crate::core::play_mode::PlayState::Playing {
             if let Ok(mut text) = text_query.single_mut() {
-                text.0 = "🎮 PLAYING IN VIEWPORT (Active) | WASD: Move/Pan | Space: Jump | ⏹ Stop to Exit".to_string();
+                text.0 = "Playing in Game View · Esc releases game input · F8 stops".to_string();
             }
         } else if *state == crate::core::play_mode::PlayState::Paused {
             if let Ok(mut text) = text_query.single_mut() {
-                text.0 = "⏸ SIMULATION PAUSED | Click ▶ Play to Resume | ⏹ Stop to Exit".to_string();
+                text.0 = "Paused · Play resumes · Step advances one frame · Stop returns to editing".to_string();
             }
         } else if export_status.is_changed() {
             if let Ok(mut text) = text_query.single_mut() {

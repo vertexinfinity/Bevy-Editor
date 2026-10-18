@@ -4,6 +4,7 @@ use crate::scene::{EditorInternal};
 /// Global observer: clicks on non-editor entities in the 3D scene select them in the inspector.
 pub fn select_entity_on_viewport_click(
     click: On<PointerClick>,
+    play_state: Res<crate::core::play_mode::PlayState>,
     scene_entities: Query<(), With<crate::scene::SceneEntity>>,
     parent_query: Query<&ChildOf>,
     editor_internal: Query<(), With<EditorInternal>>,
@@ -12,7 +13,7 @@ pub fn select_entity_on_viewport_click(
     gizmo_state: Option<Res<bevy::gizmos::transform_gizmo::TransformGizmoState>>,
     mut selection: ResMut<InspectorSelection>,
 ) {
-    if click.button != PointerButton::Primary {
+    if *play_state != crate::core::play_mode::PlayState::Edit || click.button != PointerButton::Primary {
         return;
     }
 

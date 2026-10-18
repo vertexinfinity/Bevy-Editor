@@ -1,5 +1,12 @@
 # Bevy Editor (Bevylite)
 
+## Bundled editor showcase
+
+Open **Editor Showcase** in the project hub to explore a nested courtyard scene,
+linked gate/switch/trigger entities, 25 PBR samples, lighting, scripts and a hidden
+64-entity hierarchy branch. See the [sample and QA checklist](samples/editor_showcase/README.md).
+Create a disposable copy with `cargo run -- new MyShowcase --template editor_showcase --output D:\Projects`.
+
 A minimal, modular, lightning-fast 3D Scene Editor, GPU Lightmapper, and Multi-Platform Exporter built for [Bevy Engine](https://bevy.org) (`v0.20-dev`).
 
 [![Latest Release](https://img.shields.io/github/v/release/vertexinfinity/Bevy-Editor?include_prereleases&label=release&color=00e5ff)](https://github.com/vertexinfinity/Bevy-Editor/releases/latest)
@@ -49,6 +56,10 @@ Bevylite is an independent, community-driven project designed with specific phil
 - **Native Entity & Component Inspector**: Uses Bevy's official `bevy_inspector` and `bevy_feathers` dark theme tokens, providing real-time entity tree inspection and live component editing.
 - **Project Explorer & Asset Browser**: Built-in asset panel browsing `assets/` (3D models, textures, scenes, audio) with single-click spawning.
 - **Drag-and-Drop 3D Models**: Uses Bevy's native `FileDragAndDrop`. Drag any `.glb`, `.gltf`, or `.ron` file directly from your file manager into the editor window to spawn it immediately.
+- **Reflection-Driven Inspector**: A generic **Components** card renders every reflected component, using `bevy_annotations` (`DisplayName`, `Tooltip`, `ValueRange`, `Step`, `Unit`, `ReadOnly`) for labels, sliders limits, units and help text. Booleans and enums toggle on click, numbers have −/+ steppers (Shift = 10×), and every edit is undoable.
+- **Camera Rendering Card**: HDR, bloom, auto exposure, SSAO, SSR, depth of field, chromatic aberration, vignette, sharpening, anti-aliasing (MSAA/FXAA/SMAA/TAA) and tonemapping for scene cameras, with *Preview in viewport* to see them while editing.
+- **World & Environment**: Background color, ambient light, physical atmosphere sky, distance fog and volumetric fog, saved with the scene. Shown in the Inspector when nothing is selected.
+- **Mesh Rendering Card**: Cast/receive shadows, per-object wireframe and bounds; a viewport *Wireframe* chip toggles global wireframe; the play bar has a simulation speed button.
 - **Scene Serialization with Sidecar Manifest**: Save and reload scenes (`.scn.ron` + `.bevylite.json`) preserving custom primitive geometry, shapes, PBR materials, transforms, and lights.
 
 ---
@@ -82,7 +93,7 @@ Bevylite features an always-on remote automation bridge running concurrently ove
 | `editor/enter_editor` | `enter_editor` | Transitions from the Project Hub into the active 3D Editor workspace. |
 | `editor/scene_tree` | `tree` | Lists all scene entities with IDs, names, transforms, materials, and lightmaps. |
 | `editor/select` | `select <id\|name>` | Sets the active inspector selection. |
-| `editor/spawn_primitive` | `spawn <kind> [name] [x y z]` | Spawns `cube`, `sphere`, `cylinder`, `plane`, `point_light`, or `directional_light`. |
+| `editor/spawn_primitive` | `spawn <kind> [name] [x y z]` | Spawns `cube`, `sphere`, `cylinder`, `plane`, `point_light`, `directional_light`, `spot_light`, or `camera`. |
 | `editor/set_transform` | `transform <id> ...` | Updates position, euler rotation, and scale. |
 | `editor/set_material` | `material <id> ...` | Modifies base color, metallic, roughness, and unlit flags. |
 | `editor/delete_entity` | `delete <id>` | Despawns a scene entity. |
@@ -94,6 +105,17 @@ Bevylite features an always-on remote automation bridge running concurrently ove
 | `editor/screenshot` | `screenshot [path]` | Captures viewport framebuffer directly to PNG (or press `F12`). |
 | `editor/play_mode` | `play` / `pause` / `stop` | Toggles simulation play mode. |
 | `editor/exit` | `exit` / `quit` | Gracefully closes the editor. |
+| `editor/components` | | Reflected components of an entity with fields, values, units, ranges and tooltips. |
+| `editor/set_field` | | Edits any reflected field (`component`, `field` path, `value`), with undo. |
+| `editor/add_component` / `editor/remove_component` | | Adds a component by type name using its `Default`, or removes one. |
+| `editor/component_types` | | Lists registered components that can be added (optional `filter`). |
+| `editor/world` | | Reads or edits World / Environment settings (`set: {field: value}`). |
+| `editor/camera_rendering` | | Camera post-process stack: `features` on/off, `anti_aliasing`, `tonemapping`, viewport `preview`. |
+| `editor/mesh_rendering` | | Per-object `cast_shadows`, `receive_shadows`, `wireframe`, `show_bounds`. |
+| `editor/viewport` | | Viewport overlays: `wireframe`, `grid`, `gizmos`, `bounds`. |
+| `editor/time_scale` | | Simulation speed (`Time<Virtual>` relative speed). |
+| `editor/cameras` | | Every camera with order, HDR and activity (debugging). |
+ `bevylite mcp` server exposes all of these to AI agents through the `bevylite_editor_rpc` tool, which forwards to the running editor.
 
 ---
 

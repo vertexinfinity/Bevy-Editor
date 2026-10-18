@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use bevy::prelude::*;
-use crate::core::play_mode::PlayState;
+use crate::core::{play_mode::{PlayState, PreviewEntity, PlaySystems}, play_input::GameInput};
 
 /// Types of public script properties that can be inspected and serialized.
 #[derive(Reflect, Clone, Debug, PartialEq)]
@@ -16,6 +16,14 @@ pub enum ScriptPropertyVal {
     Vec3(Vec3),
 }
 
+/// Declarative inspector group supplied by a script manifest or a Rust integration.
+/// Properties not listed in a group are displayed in the default "Properties" group.
+#[derive(Reflect, Clone, Debug, PartialEq)]
+pub struct ScriptInspectorSection {
+    pub title: String,
+    pub property_keys: Vec<String>,
+}
+
 /// Custom script component allowing user scripts (Lua, Rhai, or custom behavior).
 ///
 /// Features:
@@ -23,13 +31,22 @@ pub enum ScriptPropertyVal {
 /// - Object/entity assignment slots (linking other scene entities or target scripts)
 #[derive(Component, Reflect, Clone, Debug)]
 #[reflect(Component, Default)]
+#[component(map_entities)]
 pub struct ScriptComponent {
     pub script_file: String,
     pub enabled: bool,
     /// Exposed public properties edited in inspector and serialized to scene
     pub properties: HashMap<String, ScriptPropertyVal>,
+    /// Optional per-script inspector layout. This is data only; the editor owns rendering.
+    pub inspector_sections: Vec<ScriptInspectorSection>,
     /// Assigned entity references (e.g. target_actor, trigger_volume, camera_focus)
     pub entity_refs: HashMap<String, Entity>,
+}
+
+impl bevy::ecs::entity::MapEntities for ScriptComponent {
+    fn map_entities<M: bevy::ecs::entity::EntityMapper>(&mut self, mapper: &mut M) {
+        for target in self.entity_refs.values_mut() { *target = mapper.get_mapped(*target); }
+    }
 }
 
 impl Default for ScriptComponent {
@@ -44,6 +61,13 @@ impl Default for ScriptComponent {
             script_file: "scripts/player.lua".to_string(),
             enabled: true,
             properties: props,
+            inspector_sections: vec![ScriptInspectorSection {
+                title: "Movement".to_string(),
+                property_keys: vec!["move_speed".to_string(), "jump_force".to_string(), "is_active".to_string()],
+            }, ScriptInspectorSection {
+                title: "Identity".to_string(),
+                property_keys: vec!["actor_name".to_string()],
+            }],
             entity_refs: HashMap::new(),
         }
     }
@@ -51,16 +75,19 @@ impl Default for ScriptComponent {
 
 /// Dynamic velocity for physics or character movement.
 #[derive(Component, Reflect, Default, Clone, Debug)]
-#[reflect(Component, Default)]
+#[reflect(Component, Default, @bevy::annotations::Tooltip("Constant linear velocity applied every frame in Play mode"))]
 pub struct Velocity {
+    #[reflect(@bevy::annotations::DisplayName("Linear Velocity"), @bevy::annotations::Unit("m/s"), @bevy::annotations::Step(0.5))]
     pub linear: Vec3,
 }
 
 /// Continuous rotation animation around an axis.
 #[derive(Component, Reflect, Clone, Debug)]
-#[reflect(Component, Default)]
+#[reflect(Component, Default, @bevy::annotations::Tooltip("Rotates the entity continuously in Play mode"))]
 pub struct SpinAnimation {
+    #[reflect(@bevy::annotations::ValueRange(-20.0..=20.0), @bevy::annotations::Step(0.25), @bevy::annotations::Unit("rad/s"))]
     pub speed: f32,
+    #[reflect(@bevy::annotations::Tooltip("Rotation axis in local space"))]
     pub axis: Vec3,
 }
 
@@ -75,7 +102,7 @@ impl Default for SpinAnimation {
 
 /// Gameplay tag or identifier.
 #[derive(Component, Reflect, Default, Clone, Debug)]
-#[reflect(Component, Default)]
+#[reflect(Component, Default, @bevy::annotations::Tooltip("Free-form tag scripts can query"))]
 pub struct GameplayTag {
     pub tag: String,
 }
@@ -103,7 +130,7 @@ impl UiButtonClickAction {
         commands: &mut Commands,
         meshes: &mut Assets<Mesh>,
         materials: &mut Assets<StandardMaterial>,
-        lights: &mut Query<&mut Visibility, With<PointLight>>,
+        lights: &mut Query<&mut Visibility, (With<PointLight>, With<PreviewEntity>)>,
     ) {
         match self {
             Self::LogMessage(msg) => {
@@ -125,7 +152,8 @@ impl UiButtonClickAction {
                     ..default()
                 });
                 commands.spawn((
-                    crate::scene::SceneEntity,
+                    PreviewEntity,
+                    bevy::camera::visibility::RenderLayers::layer(31),
                     Name::new("Spawned Dynamic Cube"),
                     Mesh3d(mesh),
                     MeshMaterial3d(mat),
@@ -237,9 +265,47 @@ impl Default for RtsController {
 
 pub struct AuthorableComponentsPlugin;
 
+/// Native sample behavior; the Lua files demonstrate inspector data, not a Lua runtime.
+#[derive(Component, Reflect, Clone, Default)]
+#[reflect(Component, Default)]
+pub struct ShowcaseGate {
+    pub open: bool,
+    pub closed_y: f32,
+}
+
+fn simulate_showcase_gate(
+    time: Res<Time>, state: Res<PlayState>, input: Res<GameInput>,
+    mut gates: Query<(&mut ShowcaseGate, &mut Transform), With<PreviewEntity>>,
+) {
+    if *state != PlayState::Playing { return; }
+    for (mut gate, mut transform) in &mut gates {
+        if input.active && (input.keys.just_pressed(KeyCode::Space) || input.keys.just_pressed(KeyCode::KeyE)) {
+            gate.open = !gate.open;
+        }
+        let target = gate.closed_y + if gate.open { 1.9 } else { 0.0 };
+        transform.translation.y += (target - transform.translation.y) * (time.delta_secs() * 5.0).min(1.0);
+    }
+}
+
+fn click_showcase_switch(
+    click: On<bevy::picking::events::PointerClick>, state: Res<PlayState>, input: Res<GameInput>,
+    switches: Query<&ScriptComponent, With<PreviewEntity>>,
+    mut gates: Query<&mut ShowcaseGate, With<PreviewEntity>>,
+) {
+    if *state != PlayState::Playing || !input.active || click.button != bevy::picking::pointer::PointerButton::Primary { return; }
+    if let Ok(script) = switches.get(click.entity) {
+        if let Some(target) = script.entity_refs.get("gate") {
+            if let Ok(mut gate) = gates.get_mut(*target) { gate.open = !gate.open; }
+        }
+    }
+}
+
 impl Plugin for AuthorableComponentsPlugin {
     fn build(&self, app: &mut App) {
         app.register_type::<ScriptPropertyVal>()
+            .register_type::<ShowcaseGate>()
+            .add_observer(click_showcase_switch)
+            .register_type::<ScriptInspectorSection>()
             .register_type::<ScriptComponent>()
             .register_type::<Velocity>()
             .register_type::<SpinAnimation>()
@@ -262,7 +328,8 @@ impl Plugin for AuthorableComponentsPlugin {
                     simulate_fps_controller,
                     simulate_orbit_camera,
                     simulate_rts_camera,
-                ),
+                    simulate_showcase_gate,
+                ).in_set(PlaySystems::Simulation),
             );
     }
 }
@@ -270,7 +337,7 @@ impl Plugin for AuthorableComponentsPlugin {
 fn animate_spinning_objects(
     time: Res<Time>,
     play_state: Option<Res<PlayState>>,
-    mut query: Query<(&SpinAnimation, &mut Transform)>,
+    mut query: Query<(&SpinAnimation, &mut Transform), With<PreviewEntity>>,
 ) {
     if let Some(state) = play_state {
         if *state != PlayState::Playing {
@@ -292,7 +359,7 @@ fn animate_spinning_objects(
 fn simulate_velocities(
     time: Res<Time>,
     play_state: Option<Res<PlayState>>,
-    mut query: Query<(&Velocity, &mut Transform)>,
+    mut query: Query<(&Velocity, &mut Transform), With<PreviewEntity>>,
 ) {
     if let Some(state) = play_state {
         if *state != PlayState::Playing {
@@ -310,11 +377,11 @@ fn simulate_velocities(
 /// Handles interactive UI button clicks during Play mode.
 fn handle_ui_button_interactions(
     play_state: Option<Res<PlayState>>,
-    interaction_query: Query<&UiButtonClickAction, Added<bevy::ui::Pressed>>,
+    interaction_query: Query<&UiButtonClickAction, (Added<bevy::ui::Pressed>, With<PreviewEntity>)>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut lights: Query<&mut Visibility, With<PointLight>>,
+    mut lights: Query<&mut Visibility, (With<PointLight>, With<PreviewEntity>)>,
 ) {
     if let Some(state) = play_state {
         if *state != PlayState::Playing {
@@ -333,8 +400,8 @@ fn handle_ui_button_interactions(
 fn simulate_player_movement(
     time: Res<Time>,
     play_state: Option<Res<PlayState>>,
-    keys: Res<ButtonInput<KeyCode>>,
-    mut query: Query<(&mut Transform, Option<&PlayerController>, Option<&Name>, Option<&GameplayTag>, Option<&ScriptComponent>), Without<Camera>>,
+    input: Res<GameInput>,
+    mut query: Query<(&mut Transform, Option<&PlayerController>, Option<&Name>, Option<&GameplayTag>, Option<&ScriptComponent>), (Without<Camera>, With<PreviewEntity>)>,
 ) {
     if let Some(state) = play_state {
         if *state != PlayState::Playing {
@@ -344,6 +411,7 @@ fn simulate_player_movement(
         return;
     }
 
+    if !input.active { return; }
     let dt = time.delta_secs();
     for (mut transform, player_ctrl, name, tag, script) in &mut query {
         let is_player = player_ctrl.is_some()
@@ -363,16 +431,16 @@ fn simulate_player_movement(
             .unwrap_or_else(|| player_ctrl.map_or(8.0, |p| p.speed));
         let mut move_dir = Vec3::ZERO;
 
-        if keys.pressed(KeyCode::KeyW) || keys.pressed(KeyCode::ArrowUp) {
+        if input.keys.pressed(KeyCode::KeyW) || input.keys.pressed(KeyCode::ArrowUp) {
             move_dir.z -= 1.0;
         }
-        if keys.pressed(KeyCode::KeyS) || keys.pressed(KeyCode::ArrowDown) {
+        if input.keys.pressed(KeyCode::KeyS) || input.keys.pressed(KeyCode::ArrowDown) {
             move_dir.z += 1.0;
         }
-        if keys.pressed(KeyCode::KeyA) || keys.pressed(KeyCode::ArrowLeft) {
+        if input.keys.pressed(KeyCode::KeyA) || input.keys.pressed(KeyCode::ArrowLeft) {
             move_dir.x -= 1.0;
         }
-        if keys.pressed(KeyCode::KeyD) || keys.pressed(KeyCode::ArrowRight) {
+        if input.keys.pressed(KeyCode::KeyD) || input.keys.pressed(KeyCode::ArrowRight) {
             move_dir.x += 1.0;
         }
 
@@ -386,7 +454,7 @@ fn simulate_player_movement(
         }
 
         // Jump
-        if keys.just_pressed(KeyCode::Space) {
+        if input.keys.just_pressed(KeyCode::Space) {
             transform.translation.y += 1.5;
         }
     }
@@ -396,8 +464,8 @@ fn simulate_player_movement(
 fn simulate_follow_camera(
     time: Res<Time>,
     play_state: Option<Res<PlayState>>,
-    player_query: Query<&Transform, (Or<(With<PlayerController>, With<GameplayTag>)>, Without<Camera>)>,
-    mut camera_query: Query<(&mut Transform, Option<&FollowCamera>), (With<Camera>, Without<PlayerController>)>,
+    player_query: Query<&Transform, (Or<(With<PlayerController>, With<GameplayTag>)>, Without<Camera>, With<PreviewEntity>)>,
+    mut camera_query: Query<(&mut Transform, Option<&FollowCamera>), (With<Camera>, Without<PlayerController>, With<FollowCamera>, With<PreviewEntity>)>,
 ) {
     if let Some(state) = play_state {
         if *state != PlayState::Playing {
@@ -426,10 +494,8 @@ fn simulate_follow_camera(
 fn simulate_fps_controller(
     time: Res<Time>,
     play_state: Option<Res<PlayState>>,
-    keys: Res<ButtonInput<KeyCode>>,
-    mouse_buttons: Res<ButtonInput<MouseButton>>,
-    mouse_motion: Res<bevy::input::mouse::AccumulatedMouseMotion>,
-    mut query: Query<(&mut Transform, &mut FpsController, Option<&ScriptComponent>), (With<Camera>, Without<PlayerController>, Without<FollowCamera>)>,
+    input: Res<GameInput>,
+    mut query: Query<(&mut Transform, &mut FpsController, Option<&ScriptComponent>), (With<Camera>, Without<PlayerController>, Without<FollowCamera>, With<PreviewEntity>)>,
 ) {
     if let Some(state) = play_state {
         if *state != PlayState::Playing {
@@ -439,6 +505,7 @@ fn simulate_fps_controller(
         return;
     }
 
+    if !input.active { return; }
     let dt = time.delta_secs();
 
     for (mut trans, mut fps, script) in &mut query {
@@ -451,9 +518,9 @@ fn simulate_fps_controller(
             .unwrap_or(fps.speed);
 
         // Mouse look: dragging either mouse button rotates camera view
-        if mouse_buttons.pressed(MouseButton::Right) || mouse_buttons.pressed(MouseButton::Left) {
-            fps.yaw -= mouse_motion.delta.x * fps.sensitivity;
-            fps.pitch = (fps.pitch - mouse_motion.delta.y * fps.sensitivity).clamp(-1.45, 1.45);
+        if input.mouse_buttons.pressed(MouseButton::Right) || input.mouse_buttons.pressed(MouseButton::Left) {
+            fps.yaw -= input.mouse_delta.x * fps.sensitivity;
+            fps.pitch = (fps.pitch - input.mouse_delta.y * fps.sensitivity).clamp(-1.45, 1.45);
         }
 
         trans.rotation = Quat::from_euler(EulerRot::YXZ, fps.yaw, fps.pitch, 0.0);
@@ -464,16 +531,16 @@ fn simulate_fps_controller(
         let right_flat = Vec3::new(right.x, 0.0, right.z).normalize_or_zero();
 
         let mut move_dir = Vec3::ZERO;
-        if keys.pressed(KeyCode::KeyW) || keys.pressed(KeyCode::ArrowUp) {
+        if input.keys.pressed(KeyCode::KeyW) || input.keys.pressed(KeyCode::ArrowUp) {
             move_dir += forward_flat;
         }
-        if keys.pressed(KeyCode::KeyS) || keys.pressed(KeyCode::ArrowDown) {
+        if input.keys.pressed(KeyCode::KeyS) || input.keys.pressed(KeyCode::ArrowDown) {
             move_dir -= forward_flat;
         }
-        if keys.pressed(KeyCode::KeyD) || keys.pressed(KeyCode::ArrowRight) {
+        if input.keys.pressed(KeyCode::KeyD) || input.keys.pressed(KeyCode::ArrowRight) {
             move_dir += right_flat;
         }
-        if keys.pressed(KeyCode::KeyA) || keys.pressed(KeyCode::ArrowLeft) {
+        if input.keys.pressed(KeyCode::KeyA) || input.keys.pressed(KeyCode::ArrowLeft) {
             move_dir -= right_flat;
         }
 
@@ -487,9 +554,8 @@ fn simulate_fps_controller(
 fn simulate_orbit_camera(
     time: Res<Time>,
     play_state: Option<Res<PlayState>>,
-    mouse_buttons: Res<ButtonInput<MouseButton>>,
-    mouse_motion: Res<bevy::input::mouse::AccumulatedMouseMotion>,
-    mut camera_query: Query<(&mut Transform, &mut OrbitController), With<Camera>>,
+    input: Res<GameInput>,
+    mut camera_query: Query<(&mut Transform, &mut OrbitController), (With<Camera>, With<PreviewEntity>)>,
 ) {
     if let Some(state) = play_state {
         if *state != PlayState::Playing {
@@ -500,16 +566,16 @@ fn simulate_orbit_camera(
     }
 
     for (mut trans, mut orbit) in &mut camera_query {
-        if mouse_buttons.pressed(MouseButton::Left) || mouse_buttons.pressed(MouseButton::Right) {
-            orbit.yaw -= mouse_motion.delta.x * orbit.sensitivity;
-            orbit.pitch = (orbit.pitch - mouse_motion.delta.y * orbit.sensitivity).clamp(-1.4, 1.4);
+        if input.mouse_buttons.pressed(MouseButton::Left) || input.mouse_buttons.pressed(MouseButton::Right) {
+            orbit.yaw -= input.mouse_delta.x * orbit.sensitivity;
+            orbit.pitch = (orbit.pitch - input.mouse_delta.y * orbit.sensitivity).clamp(-1.4, 1.4);
         } else {
             // Gentle continuous turntable spin when not dragging
-            orbit.yaw += 0.3 * time.delta_secs();
+            orbit.yaw += 0.15 * time.delta_secs();
         }
 
-        let rot = Quat::from_euler(EulerRot::YXZ, orbit.yaw, orbit.pitch, 0.0);
-        trans.translation = rot * Vec3::new(0.0, 0.0, orbit.distance);
+        orbit.distance = (orbit.distance - input.scroll_delta.y).clamp(4.0, 50.0);
+        trans.translation = Vec3::new(orbit.yaw.sin() * orbit.pitch.cos(), orbit.pitch.sin(), orbit.yaw.cos() * orbit.pitch.cos()) * orbit.distance;
         trans.look_at(Vec3::new(0.0, 1.0, 0.0), Vec3::Y);
     }
 }
@@ -518,9 +584,8 @@ fn simulate_orbit_camera(
 fn simulate_rts_camera(
     time: Res<Time>,
     play_state: Option<Res<PlayState>>,
-    keys: Res<ButtonInput<KeyCode>>,
-    mouse_scroll: Res<bevy::input::mouse::AccumulatedMouseScroll>,
-    mut camera_query: Query<(&mut Transform, Option<&RtsController>), With<Camera>>,
+    input: Res<GameInput>,
+    mut camera_query: Query<(&mut Transform, Option<&RtsController>), (With<Camera>, With<PreviewEntity>)>,
 ) {
     if let Some(state) = play_state {
         if *state != PlayState::Playing {
@@ -530,6 +595,7 @@ fn simulate_rts_camera(
         return;
     }
 
+    if !input.active { return; }
     let dt = time.delta_secs();
     for (mut cam_trans, rts_ctrl) in &mut camera_query {
         if rts_ctrl.is_none() {
@@ -538,19 +604,19 @@ fn simulate_rts_camera(
         let speed = rts_ctrl.map_or(15.0, |r| r.speed);
         let mut pan = Vec3::ZERO;
 
-        if keys.pressed(KeyCode::KeyW) || keys.pressed(KeyCode::ArrowUp) {
+        if input.keys.pressed(KeyCode::KeyW) || input.keys.pressed(KeyCode::ArrowUp) {
             pan.z -= 1.0;
             pan.x -= 1.0;
         }
-        if keys.pressed(KeyCode::KeyS) || keys.pressed(KeyCode::ArrowDown) {
+        if input.keys.pressed(KeyCode::KeyS) || input.keys.pressed(KeyCode::ArrowDown) {
             pan.z += 1.0;
             pan.x += 1.0;
         }
-        if keys.pressed(KeyCode::KeyA) || keys.pressed(KeyCode::ArrowLeft) {
+        if input.keys.pressed(KeyCode::KeyA) || input.keys.pressed(KeyCode::ArrowLeft) {
             pan.x -= 1.0;
             pan.z += 1.0;
         }
-        if keys.pressed(KeyCode::KeyD) || keys.pressed(KeyCode::ArrowRight) {
+        if input.keys.pressed(KeyCode::KeyD) || input.keys.pressed(KeyCode::ArrowRight) {
             pan.x += 1.0;
             pan.z -= 1.0;
         }
@@ -559,8 +625,8 @@ fn simulate_rts_camera(
             cam_trans.translation += pan.normalize() * speed * dt;
         }
 
-        if mouse_scroll.delta.y.abs() > 0.01 {
-            cam_trans.translation.y = (cam_trans.translation.y - mouse_scroll.delta.y * 2.0).clamp(5.0, 40.0);
+        if input.scroll_delta.y.abs() > 0.01 {
+            cam_trans.translation.y = (cam_trans.translation.y - input.scroll_delta.y * 2.0).clamp(5.0, 40.0);
         }
     }
 }

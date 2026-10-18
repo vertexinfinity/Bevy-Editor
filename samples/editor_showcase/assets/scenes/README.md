@@ -1,0 +1,1 @@
+The original scene is procedural and reset on opening the bundled hub project. Save edited scenes here using File > Save As. Save/reload is a QA workflow; the editor sidecar currently does not preserve every hierarchy/script field.

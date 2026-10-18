@@ -14,6 +14,18 @@ use crate::scene::{components::*, EditorInternal};
 use crate::ui::theme::*;
 use super::types::*;
 
+#[derive(Component)]
+pub struct TransformFieldFocus { property: TransformProperty, axis: TransformAxis }
+
+pub fn update_transform_field_focus(
+    edit: Res<TransformTextEditState>, mut fields: Query<(&TransformFieldFocus, &mut BorderColor)>,
+) {
+    if !edit.is_changed() { return; }
+    for (field, mut border) in &mut fields {
+        *border = BorderColor::all(if edit.active == Some((field.property, field.axis)) { ACCENT_CYAN } else { Color::NONE });
+    }
+}
+
 pub(crate) fn spawn_transform_value_row(
     commands: &mut Commands,
     parent: Entity,
@@ -24,7 +36,10 @@ pub(crate) fn spawn_transform_value_row(
         .spawn((
             EditorInternal,
             Node {
-                flex_direction: FlexDirection::Column,
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: px(6),
+                min_width: px(0),
                 row_gap: px(3),
                 ..default()
             },
@@ -35,6 +50,7 @@ pub(crate) fn spawn_transform_value_row(
     commands.spawn((
         EditorInternal,
         Pickable::IGNORE,
+        Node { width: px(54), flex_shrink: 0.0, ..default() },
         Text::new(label),
         TextFont {
             font_size: bevy::text::FontSize::Px(FONT_SIZE_SMALL),
@@ -49,7 +65,9 @@ pub(crate) fn spawn_transform_value_row(
             EditorInternal,
             Node {
                 flex_direction: FlexDirection::Row,
-                column_gap: px(8),
+                column_gap: px(4),
+                flex_grow: 1.0,
+                min_width: px(0),
                 align_items: AlignItems::Center,
                 ..default()
             },
@@ -64,6 +82,9 @@ pub(crate) fn spawn_transform_value_row(
                 Node {
                     flex_direction: FlexDirection::Row,
                     column_gap: px(3),
+                    flex_grow: 1.0,
+                    flex_basis: px(0),
+                    min_width: px(0),
                     align_items: AlignItems::Center,
                     ..default()
                 },
@@ -79,7 +100,7 @@ pub(crate) fn spawn_transform_value_row(
                 font_size: bevy::text::FontSize::Px(FONT_SIZE_SMALL),
                 ..default()
             },
-            TextColor(TEXT_MUTED),
+            TextColor(match axis { TransformAxis::X => AXIS_X, TransformAxis::Y => AXIS_Y, TransformAxis::Z => AXIS_Z }),
             ChildOf(axis_cell),
         ));
 
@@ -103,7 +124,8 @@ fn spawn_transform_axis_widget(
             EditorInternal,
             Node {
                 position_type: PositionType::Relative,
-                width: px(78),
+                flex_grow: 1.0,
+                min_width: px(0),
                 height: px(24),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
@@ -116,8 +138,10 @@ fn spawn_transform_axis_widget(
     let value_field = commands
         .spawn((
             EditorInternal,
+            TransformFieldFocus { property, axis },
             Node {
-                width: px(50),
+                width: percent(100),
+                min_width: px(0),
                 height: px(22),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
@@ -126,7 +150,7 @@ fn spawn_transform_axis_widget(
                 ..default()
             },
             BackgroundColor(BG_INPUT),
-            BorderColor::all(BORDER_SUBTLE),
+            BorderColor::all(Color::NONE),
             ChildOf(widget),
         ))
         .observe(|trigger: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| {
@@ -139,9 +163,10 @@ fn spawn_transform_axis_widget(
                 *bg = BackgroundColor(BG_INPUT);
             }
         })
-        .observe(move |click: On<PointerClick>, mut text_edit: ResMut<TransformTextEditState>| {
+        .observe(move |click: On<PointerClick>, mut text_edit: ResMut<TransformTextEditState>, mut property_edit: ResMut<super::property_editor::PropertyEditState>| {
             if click.button == PointerButton::Primary {
                 text_edit.active = Some((property, axis));
+                property_edit.cancel();
                 text_edit.buffer.clear();
             }
         })
@@ -433,10 +458,11 @@ pub fn update_clean_transform_labels(
 
     let Some(selected) = selection.0 else {
         if selection.is_changed() {
-            name_txt.0 = "Selected: None (Click object in scene)".to_string();
+            name_txt.0 = "Select an entity".to_string();
             set_transform_axis_values(&mut axis_labels, Vec3::ZERO, Vec3::ZERO, Vec3::ONE, &text_edit);
             badges_txt.0 = "None".to_string();
-            script_txt.0 = "No entity selected".to_string();
+            script_txt.0.clear();
+            if let Ok(mut card) = script_card_query.single_mut() { card.display = Display::None; }
             if let Ok(mut mat_card) = mat_card_query.single_mut() {
                 mat_card.display = Display::None;
             }
@@ -447,7 +473,8 @@ pub fn update_clean_transform_labels(
     let Ok((name, transform, global_transform, script, spin, vel, tag, mesh, dir_light, pt_light, vis, mat_handle)) = entities.get(selected) else {
         name_txt.0 = format!("Selected: {:?} (Despawned)", selected);
         set_transform_axis_values(&mut axis_labels, Vec3::ZERO, Vec3::ZERO, Vec3::ONE, &text_edit);
-        script_txt.0 = "Despawned".to_string();
+        script_txt.0.clear();
+        if let Ok(mut card) = script_card_query.single_mut() { card.display = Display::None; }
         if let Ok(mut mat_card) = mat_card_query.single_mut() {
             mat_card.display = Display::None;
         }
@@ -492,9 +519,9 @@ pub fn update_clean_transform_labels(
     };
 
     name_txt.0 = if is_hidden {
-        format!("Selected: {base_name} [Hidden]")
+        format!("{base_name} · Hidden")
     } else {
-        format!("Selected: {base_name}")
+        base_name
     };
 
     // Compute display position, rotation, scale
@@ -517,20 +544,20 @@ pub fn update_clean_transform_labels(
 
     // Collect badges
     let mut badges = Vec::new();
-    if transform.is_some() { badges.push("[Transform]"); }
-    if mesh.is_some() { badges.push("[Mesh3d]"); }
-    if mat_handle.is_some() { badges.push("[PBR Material]"); }
-    if dir_light.is_some() { badges.push("[DirectionalLight]"); }
-    if pt_light.is_some() { badges.push("[PointLight]"); }
-    if script.is_some() { badges.push("[Script]"); }
-    if spin.is_some() { badges.push("[SpinAnimation]"); }
-    if vel.is_some() { badges.push("[Velocity]"); }
-    if tag.is_some() { badges.push("[GameplayTag]"); }
+    if transform.is_some() { badges.push("Transform"); }
+    if mesh.is_some() { badges.push("Mesh3d"); }
+    if mat_handle.is_some() { badges.push("PBR Material"); }
+    if dir_light.is_some() { badges.push("DirectionalLight"); }
+    if pt_light.is_some() { badges.push("PointLight"); }
+    if script.is_some() { badges.push("Script"); }
+    if spin.is_some() { badges.push("SpinAnimation"); }
+    if vel.is_some() { badges.push("Velocity"); }
+    if tag.is_some() { badges.push("GameplayTag"); }
 
     badges_txt.0 = if badges.is_empty() {
         "None".to_string()
     } else {
-        badges.join(" ")
+        badges.join(" · ")
     };
 
     if let Ok(mut card_node) = script_card_query.single_mut() {
@@ -538,18 +565,7 @@ pub fn update_clean_transform_labels(
     }
 
     if let Some(script_comp) = script {
-        let mut lines = Vec::new();
-        lines.push(format!("File: {}", script_comp.script_file));
-        for (k, v) in &script_comp.properties {
-            match v {
-                ScriptPropertyVal::Float(f) => lines.push(format!("• {}: {:.2}", k, f)),
-                ScriptPropertyVal::Int(i) => lines.push(format!("• {}: {}", k, i)),
-                ScriptPropertyVal::Bool(b) => lines.push(format!("• {}: {}", k, b)),
-                ScriptPropertyVal::String(s) => lines.push(format!("• {}: \"{}\"", k, s)),
-                ScriptPropertyVal::Vec3(v) => lines.push(format!("• {}: ({:.1}, {:.1}, {:.1})", k, v.x, v.y, v.z)),
-            }
-        }
-        script_txt.0 = lines.join("\n");
+        script_txt.0 = script_comp.script_file.clone();
     } else {
         script_txt.0 = String::new();
     }

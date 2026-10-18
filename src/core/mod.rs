@@ -10,6 +10,9 @@
 pub mod commands;
 pub mod panels;
 pub mod play_mode;
+pub mod play_input;
+pub mod reflect_fields;
+mod standalone;
 pub mod selection;
 pub mod tools;
 

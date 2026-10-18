@@ -15,11 +15,13 @@ pub enum ProjectTemplateKind {
     FirstPerson,
     OrbitViewer,
     Strategy,
+    EditorShowcase,
 }
 
 impl ProjectTemplateKind {
     pub fn from_id(id: &str) -> Self {
         match id {
+            "editor_showcase" | "showcase" => Self::EditorShowcase,
             "3d_game" | "action3d" => Self::Action3D,
             "first_person" | "fps" => Self::FirstPerson,
             "third_person" | "orbit_viewer" | "orbital" => Self::OrbitViewer,
@@ -30,7 +32,9 @@ impl ProjectTemplateKind {
 
     pub fn from_name(name: &str) -> Self {
         let lower = name.to_lowercase();
-        if lower.contains("first") || lower.contains("fps") {
+        if lower.contains("showcase") {
+            Self::EditorShowcase
+        } else if lower.contains("first") || lower.contains("fps") {
             Self::FirstPerson
         } else if lower.contains("strategy") || lower.contains("rts") || lower.contains("top-down") || lower.contains("top down") {
             Self::Strategy
@@ -45,6 +49,7 @@ impl ProjectTemplateKind {
 
     pub fn display_name(&self) -> &'static str {
         match self {
+            Self::EditorShowcase => "Editor Showcase / QA",
             Self::Blank => "Blank Canvas",
             Self::Action3D => "3D Action / Character Controller",
             Self::FirstPerson => "First Person / FPS Controller",
@@ -113,10 +118,28 @@ lto = "thin"
         fs::write(project_root.join("src/main.rs"), main_rs)
             .map_err(|e| format!("Failed to write src/main.rs: {e}"))?;
 
+        if template == ProjectTemplateKind::EditorShowcase {
+            fs::write(project_root.join("src/showcase_scene.rs"), include_str!("showcase_scene.rs"))
+                .map_err(|e| format!("Failed to write showcase scene: {e}"))?;
+            let script_dir = project_root.join("assets/scripts/showcase");
+            fs::create_dir_all(&script_dir).map_err(|e| e.to_string())?;
+            for (name, content) in [
+                ("gate_controller.lua", include_str!("../../samples/editor_showcase/assets/scripts/showcase/gate_controller.lua")),
+                ("switch.lua", include_str!("../../samples/editor_showcase/assets/scripts/showcase/switch.lua")),
+                ("trigger.lua", include_str!("../../samples/editor_showcase/assets/scripts/showcase/trigger.lua")),
+            ] {
+                fs::write(script_dir.join(name), content).map_err(|e| e.to_string())?;
+            }
+            fs::write(project_root.join("bevylite.project.json"), "{\"template\":\"editor_showcase\"}\n").map_err(|e| e.to_string())?;
+            fs::write(project_root.join("README.md"), include_str!("../../samples/editor_showcase/README.md")).map_err(|e| e.to_string())?;
+        }
+
         // 3. assets/scenes/default_scene.bsn
         let default_scene_ron = Self::generate_starter_scene_bsn(template);
         let scene_path = project_root.join("assets/scenes/default_scene.bsn");
-        let _ = fs::write(scene_path, default_scene_ron);
+        if template != ProjectTemplateKind::EditorShowcase {
+            let _ = fs::write(scene_path, default_scene_ron);
+        }
 
         // 4. scripts/demo.lua & .gitignore
         let script_demo = r#"-- Demo Script for Bevy Editor Project
@@ -162,6 +185,7 @@ end
 
     fn generate_main_rs(project_name: &str, template: ProjectTemplateKind) -> String {
         match template {
+            ProjectTemplateKind::EditorShowcase => include_str!("showcase_main.rs.txt").to_string(),
             ProjectTemplateKind::Action3D => format!(
                 r#"//! Standalone 3D Action Game created by Bevy Editor.
 

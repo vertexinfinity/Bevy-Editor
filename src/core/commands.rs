@@ -112,32 +112,29 @@ impl EditorCommand for MoveEntityCommand {
 }
 
 /// System listening for Ctrl+Z (Undo) and Ctrl+Y / Ctrl+Shift+Z (Redo) shortcuts.
-pub fn handle_undo_redo_shortcuts(world: &mut World) {
-    let (ctrl, shift, z_pressed, y_pressed) = {
-        let Some(keys) = world.get_resource::<ButtonInput<KeyCode>>() else {
-            return;
-        };
-        let ctrl = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
-        let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
-        let z_pressed = keys.just_pressed(KeyCode::KeyZ);
-        let y_pressed = keys.just_pressed(KeyCode::KeyY);
-        (ctrl, shift, z_pressed, y_pressed)
-    };
+#[derive(Default)]
+pub struct EditorModifiers { ctrl: bool, shift: bool }
 
-    if ctrl && z_pressed {
-        if shift {
-            world.resource_scope(|w, mut hist: Mut<CommandHistory>| {
-                let _ = hist.redo(w);
-            });
-        } else {
-            world.resource_scope(|w, mut hist: Mut<CommandHistory>| {
-                let _ = hist.undo(w);
-            });
+pub fn handle_undo_redo_shortcuts(
+    world: &mut World,
+    mut cursor: Local<bevy::ecs::message::MessageCursor<bevy::input::keyboard::KeyboardInput>>,
+    mut modifiers: Local<EditorModifiers>,
+) {
+    let events = cursor.read(world.resource::<Messages<bevy::input::keyboard::KeyboardInput>>()).cloned().collect::<Vec<_>>();
+    let primary = world.query_filtered::<(Entity,&Window), With<bevy::window::PrimaryWindow>>().iter(world).find(|(_,window)|window.focused).map(|(entity,_)|entity);
+    if primary.is_none() { *modifiers=default(); return; }
+    if world.get_resource::<crate::core::play_mode::PlayState>().is_some_and(|state|*state!=crate::core::play_mode::PlayState::Edit) { *modifiers=default(); return; }
+    for event in events.into_iter().filter(|event|Some(event.window)==primary) {
+        match event.key_code {
+            KeyCode::ControlLeft | KeyCode::ControlRight => modifiers.ctrl=event.state.is_pressed(),
+            KeyCode::ShiftLeft | KeyCode::ShiftRight => modifiers.shift=event.state.is_pressed(),
+            key if event.state.is_pressed() && !event.repeat && modifiers.ctrl && matches!(key,KeyCode::KeyZ|KeyCode::KeyY) => {
+                if world.get_resource::<crate::ui::inspector::property_editor::PropertyEditState>().is_some_and(|edit|edit.is_editing()) { continue; }
+                let redo=key==KeyCode::KeyY || modifiers.shift;
+                world.resource_scope(|world,mut history:Mut<CommandHistory>| { let _=if redo {history.redo(world)} else {history.undo(world)}; });
+            }
+            _=>{}
         }
-    } else if ctrl && y_pressed {
-        world.resource_scope(|w, mut hist: Mut<CommandHistory>| {
-            let _ = hist.redo(w);
-        });
     }
 }
 

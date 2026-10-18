@@ -1,0 +1,6 @@
+{
+  "name": "Editor Showcase",
+  "template": "editor_showcase",
+  "description": "Procedural editor demonstration and QA fixture",
+  "scene_source": "src/showcase_scene.rs"
+}

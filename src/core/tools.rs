@@ -92,13 +92,16 @@ impl EditorTool for ScaleTool {
 
 /// System switching active tool via Q/W/E/R hotkeys (when RMB is not held).
 pub fn handle_tool_shortcuts(
+    edit: Res<crate::ui::inspector::property_editor::PropertyEditState>,
+    transform_edit: Res<crate::ui::inspector::TransformTextEditState>,
+    hierarchy: Res<crate::ui::hierarchy::HierarchyState>,
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
     registry: Res<ToolRegistry>,
     mut active_tool: ResMut<ActiveTool>,
 ) {
     // Only switch tools if RMB is not held (RMB is reserved for camera flight)
-    if mouse.pressed(MouseButton::Right) {
+    if edit.is_editing() || transform_edit.active.is_some() || hierarchy.search_focused || mouse.pressed(MouseButton::Right) {
         return;
     }
 
@@ -125,6 +128,6 @@ impl Plugin for ToolPlugin {
 
         app.insert_resource(registry)
             .init_resource::<ActiveTool>()
-            .add_systems(Update, handle_tool_shortcuts);
+            .add_systems(Update, handle_tool_shortcuts.run_if(crate::core::play_mode::in_edit_mode));
     }
 }
