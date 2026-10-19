@@ -125,7 +125,7 @@ fn set_display(world: &mut World, card: Entity, visible: bool) {
     if let Some(mut node) = world.get_mut::<Node>(card) {
         let display = if visible { Display::Flex } else { Display::None };
         if node.display != display {
-            node.display = display;
+            crate::ui::set_display(&mut node, display);
         }
     }
 }

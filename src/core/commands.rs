@@ -22,6 +22,9 @@ pub struct CommandHistory {
     undo_stack: Vec<Box<dyn EditorCommand>>,
     redo_stack: Vec<Box<dyn EditorCommand>>,
     pub max_history: usize,
+    /// Bumped whenever history applies a change (execute, undo, redo, record), so
+    /// change trackers can tell history-driven edits from direct ones.
+    pub epoch: u64,
 }
 
 impl Default for CommandHistory {
@@ -30,6 +33,7 @@ impl Default for CommandHistory {
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             max_history: 100,
+            epoch: 0,
         }
     }
 }
@@ -40,6 +44,7 @@ impl CommandHistory {
     pub fn execute(&mut self, mut cmd: Box<dyn EditorCommand>, world: &mut World) -> Result<(), String> {
         cmd.execute(world)?;
         info!("Command executed: {}", cmd.name());
+        self.epoch += 1;
         self.undo_stack.push(cmd);
         if self.undo_stack.len() > self.max_history {
             self.undo_stack.remove(0);
@@ -55,6 +60,7 @@ impl CommandHistory {
         };
         cmd.undo(world)?;
         info!("Command undone: {}", cmd.name());
+        self.epoch += 1;
         self.redo_stack.push(cmd);
         Ok(())
     }
@@ -66,8 +72,20 @@ impl CommandHistory {
         };
         cmd.execute(world)?;
         info!("Command redone: {}", cmd.name());
+        self.epoch += 1;
         self.undo_stack.push(cmd);
         Ok(())
+    }
+
+    /// Records a change that has already been applied (e.g. a finished gizmo drag).
+    pub fn record(&mut self, cmd: Box<dyn EditorCommand>) {
+        info!("Command recorded: {}", cmd.name());
+        self.epoch += 1;
+        self.undo_stack.push(cmd);
+        if self.undo_stack.len() > self.max_history {
+            self.undo_stack.remove(0);
+        }
+        self.redo_stack.clear();
     }
 
     pub fn can_undo(&self) -> bool {

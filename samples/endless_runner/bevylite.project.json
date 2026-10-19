@@ -1,0 +1,6 @@
+{
+  "name": "Neon Runner",
+  "template": "sample_endless_runner",
+  "description": "Three-lane endless runner with jumping, coins, speed ramp, HUD and game-over screen",
+  "scene_source": "src/level.rs"
+}

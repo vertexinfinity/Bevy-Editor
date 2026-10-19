@@ -39,7 +39,15 @@ pub(super) fn dispatch(world: &mut World, method: &str, params: Option<Value>) -
         "viewport" => viewport(world, params),
         "time_scale" => time_scale(world, params),
         "cameras" => cameras(world),
-        _ => return None,
+        "perf" => Ok(crate::core::perf::perf_json(world)),
+        "undo" | "redo" => history_step(world, method == "redo"),
+        "history" => history(world),
+        "key_chord" => key_chord(world, params),
+        "import_model" => import_model(world, params),
+        "import_formats" => Ok(json!({ "formats": crate::import::IMPORT_EXTENSIONS, "native": ["glb", "gltf"] })),
+        _ => return crate::shader_editor::dispatch(world, method, params.clone())
+            .or_else(|| crate::ui_editor::dispatch(world, method, params.clone()))
+            .or_else(|| crate::physics::dispatch(world, method, params)),
     })
 }
 
@@ -238,4 +246,92 @@ fn cameras(world: &mut World) -> RpcResult {
         })
         .collect();
     Ok(json!({ "cameras": list }))
+}
+fn import_model(world: &mut World, params: Option<Value>) -> RpcResult {
+    let path = str_param(&params, "path")?.to_string();
+    let source = std::path::Path::new(&path);
+    if !crate::import::is_importable(source) {
+        return Err(invalid_params(format!("Unsupported format; use one of {:?}", crate::import::IMPORT_EXTENSIONS)));
+    }
+    let on_disk = if source.is_absolute() { source.to_path_buf() } else { std::path::Path::new("assets").join(source) };
+    let asset_path = crate::import::ensure_in_assets(&on_disk).map_err(err)?;
+    let position = params
+        .as_ref()
+        .and_then(|p| p.get("position"))
+        .and_then(Value::as_array)
+        .map(|a| Vec3::new(
+            a.first().and_then(Value::as_f64).unwrap_or(0.0) as f32,
+            a.get(1).and_then(Value::as_f64).unwrap_or(0.0) as f32,
+            a.get(2).and_then(Value::as_f64).unwrap_or(0.0) as f32,
+        ))
+        .unwrap_or(Vec3::ZERO);
+    let name = params.as_ref().and_then(|p| p.get("name")).and_then(Value::as_str).map(str::to_string);
+    // Parse synchronously here so the caller learns about bad files right away.
+    let parts = crate::import::load_parts(&std::path::Path::new("assets").join(&asset_path), &asset_path).map_err(err)?;
+    let mut commands = world.commands();
+    let entity = crate::import::spawn_imported(&mut commands, &asset_path, Transform::from_translation(position), name);
+    world.flush();
+    Ok(json!({ "status": "imported", "entity": entity.to_bits(), "asset_path": asset_path, "parts": parts.len() }))
+}
+fn history_step(world: &mut World, redo: bool) -> RpcResult {
+    let result = world.resource_scope(|world, mut h: Mut<crate::core::commands::CommandHistory>| if redo { h.redo(world) } else { h.undo(world) });
+    result.map_err(err)?;
+    history(world)
+}
+
+fn history(world: &mut World) -> RpcResult {
+    let h = world.resource::<crate::core::commands::CommandHistory>();
+    Ok(json!({ "can_undo": h.can_undo(), "can_redo": h.can_redo(), "epoch": h.epoch }))
+}
+
+/// Sends a key chord (e.g. ["ControlLeft", "KeyZ"]) to the editor window as real keyboard
+/// input, so shortcuts can be exercised remotely.
+fn key_chord(world: &mut World, params: Option<Value>) -> RpcResult {
+    use bevy::input::{ButtonState, keyboard::{Key, KeyboardInput}};
+    let keys: Vec<String> = params
+        .as_ref()
+        .and_then(|p| p.get("keys"))
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(|k| k.as_str().map(str::to_string)).collect())
+        .ok_or_else(|| invalid_params("Expected keys: [\"ControlLeft\", \"KeyZ\"]"))?;
+    let window = world
+        .query_filtered::<Entity, With<bevy::window::PrimaryWindow>>()
+        .iter(world)
+        .next()
+        .ok_or_else(|| err("No primary window".into()))?;
+    let parse = |name: &str| -> Result<(KeyCode, Key), (i32, String)> {
+        let code = match name {
+            "ControlLeft" | "Ctrl" => KeyCode::ControlLeft,
+            "ShiftLeft" | "Shift" => KeyCode::ShiftLeft,
+            "Delete" => KeyCode::Delete,
+            "Escape" => KeyCode::Escape,
+            "Enter" => KeyCode::Enter,
+            other if other.starts_with("Key") && other.len() == 4 => {
+                let c = other.as_bytes()[3].to_ascii_uppercase();
+                const LETTERS: [KeyCode; 26] = [
+                    KeyCode::KeyA, KeyCode::KeyB, KeyCode::KeyC, KeyCode::KeyD, KeyCode::KeyE, KeyCode::KeyF, KeyCode::KeyG,
+                    KeyCode::KeyH, KeyCode::KeyI, KeyCode::KeyJ, KeyCode::KeyK, KeyCode::KeyL, KeyCode::KeyM, KeyCode::KeyN,
+                    KeyCode::KeyO, KeyCode::KeyP, KeyCode::KeyQ, KeyCode::KeyR, KeyCode::KeyS, KeyCode::KeyT, KeyCode::KeyU,
+                    KeyCode::KeyV, KeyCode::KeyW, KeyCode::KeyX, KeyCode::KeyY, KeyCode::KeyZ,
+                ];
+                *LETTERS.get((c.wrapping_sub(b'A')) as usize).ok_or_else(|| invalid_params(format!("Unknown key {other}")))?
+            }
+            other => return Err(invalid_params(format!("Unknown key {other}"))),
+        };
+        let logical = match name.strip_prefix("Key") {
+            Some(letter) if letter.len() == 1 => Key::Character(letter.to_lowercase().into()),
+            _ => Key::Unidentified(bevy::input::keyboard::NativeKey::Unidentified),
+        };
+        Ok((code, logical))
+    };
+    let parsed: Vec<_> = keys.iter().map(|k| parse(k)).collect::<Result<_, _>>()?;
+    let event = |(code, logical): &(KeyCode, Key), state| KeyboardInput { key_code: *code, logical_key: logical.clone(), state, text: None, repeat: false, window };
+    let mut messages = world.resource_mut::<Messages<KeyboardInput>>();
+    for key in &parsed {
+        messages.write(event(key, ButtonState::Pressed));
+    }
+    for key in parsed.iter().rev() {
+        messages.write(event(key, ButtonState::Released));
+    }
+    Ok(json!({ "sent": keys }))
 }

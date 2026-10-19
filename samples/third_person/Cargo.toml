@@ -1,0 +1,10 @@
+[package]
+name = "third_person"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+bevy.workspace = true
+sample_kit.workspace = true

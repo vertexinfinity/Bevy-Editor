@@ -302,7 +302,7 @@ pub fn update_viewport_chips(
             ViewportChipKind::Grid => ("Grid", settings.show_grid),
             ViewportChipKind::Wireframe => ("Wireframe", settings.show_wireframe),
         };
-        text.0 = format!("{}: {}", name, if active { "On" } else { "Off" });
+        crate::ui::set_text(&mut text, format!("{}: {}", name, if active { "On" } else { "Off" }));
         *color = TextColor(if active { ACCENT_CYAN } else { TEXT_MUTED });
     }
 }

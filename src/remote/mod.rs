@@ -41,9 +41,9 @@ pub struct EditorRemotePlugin {
 
 impl Default for EditorRemotePlugin {
     fn default() -> Self {
-        Self {
-            port: DEFAULT_EDITOR_BRP_PORT,
-        }
+        // BEVYLITE_RPC_PORT lets several editors run side by side (e.g. parallel test runs).
+        let port = std::env::var("BEVYLITE_RPC_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(DEFAULT_EDITOR_BRP_PORT);
+        Self { port }
     }
 }
 
@@ -1147,7 +1147,7 @@ fn rpc_delete_entity(world: &mut World, params: Option<Value>) -> Result<Value, 
         }
     }
 
-    world.despawn(entity);
+    crate::core::undo_tracker::delete_with_undo(world, entity).map_err(|e| (-32010, e))?;
 
     Ok(json!({
         "deleted": entity.to_bits(),
@@ -1402,6 +1402,9 @@ fn rpc_load_scene(world: &mut World, params: Option<Value>) -> Result<Value, (i3
             .map_err(|e| (-32005, format!("Failed to read scene manifest: {e}")))?;
         let manifest: SavedSceneManifest = serde_json::from_str(&raw_str)
             .map_err(|e| (-32006, format!("Invalid scene manifest JSON: {e}")))?;
+        // The manifest only rebuilds primitives and lights; everything else (UI, physics,
+        // shaders, imported models, scripts) comes from the RON scene saved alongside it.
+        let ron_has_rest = path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("ron");
 
         for entry in manifest.entities {
             let tf = Transform {
@@ -1511,11 +1514,15 @@ fn rpc_load_scene(world: &mut World, params: Option<Value>) -> Result<Value, (i3
                     ));
                     loaded_count += 1;
                 }
+                _ if ron_has_rest => {}
                 _ => {
                     world.spawn((SceneEntity, Name::new(entry.name), tf));
                     loaded_count += 1;
                 }
             }
+        }
+        if ron_has_rest {
+            loaded_count += merge_ron_extras(world, &path).map_err(|e| (-32007, e))?;
         }
     } else {
         let asset_server = world.resource::<AssetServer>().clone();
@@ -1685,4 +1692,39 @@ fn rpc_play_mode(world: &mut World, params: Option<Value>) -> Result<Value, (i32
         "status": "ok",
         "action": action,
     }))
+}
+
+/// Loads the entities of a saved RON scene that the JSON manifest does not rebuild
+/// (anything that is not a primitive or a light), keeping their hierarchy and components.
+fn merge_ron_extras(world: &mut World, path: &Path) -> Result<usize, String> {
+    use serde::de::DeserializeSeed;
+    let text = std::fs::read_to_string(path).map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
+    let registry = world.resource::<AppTypeRegistry>().clone();
+    let mut asset_server = world.resource::<AssetServer>().clone();
+    let mut dynamic = {
+        let registry = registry.read();
+        let mut deserializer = ron::de::Deserializer::from_str(&text).map_err(|e| e.to_string())?;
+        bevy::world_serialization::serde::WorldDeserializer { type_registry: &registry, load_from_path: &mut asset_server }
+            .deserialize(&mut deserializer)
+            .map_err(|e| format!("Invalid scene RON: {e}"))?
+    };
+    const REBUILT_BY_MANIFEST: &[&str] = &["PrimitiveMeta", "DirectionalLight", "PointLight", "SpotLight"];
+    dynamic.resources.clear();
+    dynamic.entities.retain(|entity| {
+        !entity.components.iter().any(|c| {
+            let path = c.reflect_type_path();
+            REBUILT_BY_MANIFEST.iter().any(|name| path.ends_with(&format!("::{name}")))
+        })
+    });
+    if dynamic.entities.is_empty() {
+        return Ok(0);
+    }
+    let mut map = bevy::ecs::entity::EntityHashMap::default();
+    dynamic.write_to_world(world, &mut map).map_err(|e| format!("Cannot load scene entities: {e}"))?;
+    for entity in map.values() {
+        if let Ok(mut e) = world.get_entity_mut(*entity) {
+            e.insert(SceneEntity);
+        }
+    }
+    Ok(map.len())
 }

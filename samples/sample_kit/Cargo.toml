@@ -1,0 +1,10 @@
+[package]
+name = "sample_kit"
+description = "Shared menu, HUD, game-over flow and test hooks for the Bevylite sample games"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+bevy.workspace = true

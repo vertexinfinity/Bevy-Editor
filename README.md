@@ -55,7 +55,9 @@ Bevylite is an independent, community-driven project designed with specific phil
 - **First-Person Fly Camera**: Smooth WASD movement, right-click mouselook, Q/E vertical elevation, scroll-wheel speed scaling, and Shift turbo boost.
 - **Native Entity & Component Inspector**: Uses Bevy's official `bevy_inspector` and `bevy_feathers` dark theme tokens, providing real-time entity tree inspection and live component editing.
 - **Project Explorer & Asset Browser**: Built-in asset panel browsing `assets/` (3D models, textures, scenes, audio) with single-click spawning.
-- **Drag-and-Drop 3D Models**: Uses Bevy's native `FileDragAndDrop`. Drag any `.glb`, `.gltf`, or `.ron` file directly from your file manager into the editor window to spawn it immediately.
+- **Drag-and-Drop 3D Models**: Drag `.glb`/`.gltf` (native), `.fbx` (ufbx), `.obj` + `.mtl` (tobj), `.stl` or `.ply` files, or `.ron` scenes, from your file manager into the editor window. Files are copied into `assets/models/` and spawned; non-glTF models are parsed in the background and rebuilt from the file when a scene loads.
+- **Undo / Redo everywhere**: Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) undo gizmo moves (one step per drag), inspector edits, added/removed components, material changes, spawns, duplicates and deletes (Delete key or Del button).
+- **Asset Browser grid view**: Files show as an icon grid with image thumbnails by default; the header button switches to the compact list.
 - **Reflection-Driven Inspector**: A generic **Components** card renders every reflected component, using `bevy_annotations` (`DisplayName`, `Tooltip`, `ValueRange`, `Step`, `Unit`, `ReadOnly`) for labels, sliders limits, units and help text. Booleans and enums toggle on click, numbers have −/+ steppers (Shift = 10×), and every edit is undoable.
 - **Camera Rendering Card**: HDR, bloom, auto exposure, SSAO, SSR, depth of field, chromatic aberration, vignette, sharpening, anti-aliasing (MSAA/FXAA/SMAA/TAA) and tonemapping for scene cameras, with *Preview in viewport* to see them while editing.
 - **World & Environment**: Background color, ambient light, physical atmosphere sky, distance fog and volumetric fog, saved with the scene. Shown in the Inspector when nothing is selected.
@@ -115,6 +117,10 @@ Bevylite features an always-on remote automation bridge running concurrently ove
 | `editor/viewport` | | Viewport overlays: `wireframe`, `grid`, `gizmos`, `bounds`. |
 | `editor/time_scale` | | Simulation speed (`Time<Virtual>` relative speed). |
 | `editor/cameras` | | Every camera with order, HDR and activity (debugging). |
+| `editor/import_model` | | Imports an `.fbx`/`.obj`/`.stl`/`.ply` file (`path`, optional `position`, `name`). |
+| `editor/undo` / `editor/redo` / `editor/history` | | Steps the undo history or reports whether undo/redo is available. |
+| `editor/key_chord` | | Sends real keyboard input such as `["ControlLeft", "KeyZ"]` to the editor window. |
+| `editor/perf` | | FPS, frame time, entity and UI node counts, and how many UI components changed last frame. |
  `bevylite mcp` server exposes all of these to AI agents through the `bevylite_editor_rpc` tool, which forwards to the running editor.
 
 ---
@@ -129,6 +135,21 @@ Pluggable export architecture in `src/export/`:
 
 ---
 
+## Sample games
+
+The `samples/` workspace holds small but complete games, each with a title menu, HUD,
+pause, game-over and restart flow (shared through `samples/sample_kit`):
+
+| Sample | Genre | Run |
+| :-- | :-- | :-- |
+| Coin Courtyard | Third person: orbit camera, jumping, coin collecting against a timer | `cargo run -p third_person` |
+| Target Range | First person: mouse look, hitscan shooting, ammo and reloads | `cargo run -p first_person` |
+| Neon Runner | Endless runner: three lanes, jumps, coins, rising speed | `cargo run -p endless_runner` |
+| Arena Survivor | Top-down twin-stick shooter with waves and a dash | `cargo run -p arena_shooter` |
+
+Run them from the `samples/` folder, or use the **Sample Games** section of the Project Hub:
+**Open in Editor** loads the sample's level (the same `src/level.rs` the game uses) and
+**▶ Play** builds and launches the game in its own window.
 ## Getting Started
 
 ### Prerequisites

@@ -415,9 +415,9 @@ fn update_export_progress_widget(
     };
 
     if let (true, Some(started)) = (job.rx.is_some(), job.started) {
-        root.display = Display::Flex;
+        crate::ui::set_display(&mut root, Display::Flex);
         if let Ok(mut row) = actions_row.single_mut() {
-            row.display = Display::None;
+            crate::ui::set_display(&mut row, Display::None);
         }
         let secs = started.elapsed().as_secs();
         text.0 = format!("Building {}...  {}:{:02}", job.name, secs / 60, secs % 60);
@@ -429,12 +429,12 @@ fn update_export_progress_widget(
     } else if let Some((at, ok, msg, _, zip_path)) = &job.finished {
         // Keep widget visible longer after build so user has time to click "Open Folder" or "Locate ZIP"
         if at.elapsed().as_secs_f32() > 25.0 {
-            root.display = Display::None;
+            crate::ui::set_display(&mut root, Display::None);
             if let Ok(mut row) = actions_row.single_mut() {
-                row.display = Display::None;
+                crate::ui::set_display(&mut row, Display::None);
             }
         } else {
-            root.display = Display::Flex;
+            crate::ui::set_display(&mut root, Display::Flex);
             fill_node.left = percent(0.0);
             fill_node.width = percent(100.0);
             *fill_bg = BackgroundColor(if *ok { Color::srgb(0.2, 0.8, 0.4) } else { Color::srgb(0.9, 0.3, 0.3) });
@@ -446,16 +446,16 @@ fn update_export_progress_widget(
 
             // Show action buttons if export was successful
             if let Ok(mut row) = actions_row.single_mut() {
-                row.display = if *ok { Display::Flex } else { Display::None };
+                crate::ui::set_display(&mut row, if *ok { Display::Flex } else { Display::None });
             }
             if let Ok(mut zip_node) = zip_btn_node.single_mut() {
-                zip_node.display = if *ok && zip_path.is_some() { Display::Flex } else { Display::None };
+                crate::ui::set_display(&mut zip_node, if *ok && zip_path.is_some() { Display::Flex } else { Display::None });
             }
         }
     } else {
-        root.display = Display::None;
+        crate::ui::set_display(&mut root, Display::None);
         if let Ok(mut row) = actions_row.single_mut() {
-            row.display = Display::None;
+            crate::ui::set_display(&mut row, Display::None);
         }
     }
 }

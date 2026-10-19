@@ -654,7 +654,7 @@ pub fn handle_toggle_plugin_manager(
             }
         }
         for mut node in &mut modal_query {
-            node.display = if state.is_open { Display::Flex } else { Display::None };
+            crate::ui::set_display(&mut node, if state.is_open { Display::Flex } else { Display::None });
         }
     }
 }
@@ -732,11 +732,11 @@ pub fn update_plugin_scroll_indicator(
     let track_height = track_node.size().y * track_node.inverse_scale_factor();
 
     if content_height <= visible_height || content_height <= 0.0 || track_height <= 0.0 {
-        thumb_node.display = Display::None;
+        crate::ui::set_display(&mut thumb_node, Display::None);
         return;
     }
 
-    thumb_node.display = Display::Flex;
+    crate::ui::set_display(&mut thumb_node, Display::Flex);
     let thumb_height = ((visible_height / content_height) * track_height).clamp(24.0, track_height);
     let max_scroll = (content_height - visible_height).max(1.0);
     let scroll_fraction = (scroll.y / max_scroll).clamp(0.0, 1.0);

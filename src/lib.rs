@@ -5,11 +5,15 @@ pub mod camera;
 pub mod cli;
 pub mod core;
 pub mod export;
+pub mod import;
 pub mod plugins;
 pub mod project;
+pub mod physics;
 pub mod remote;
 pub mod scene;
+pub mod shader_editor;
 pub mod ui;
+pub mod ui_editor;
 
 
 use bevy::{
@@ -79,6 +83,7 @@ pub fn create_editor_app() -> App {
             remote::EditorRemotePlugin::default(),
             bevylite_lightmapper::BevyliteLightmapperPlugin,
         ))
+        .add_plugins((shader_editor::ShaderEditorPlugin, ui_editor::UiEditorPlugin, physics::PhysicsPlugin, import::ImportPlugin))
         .add_systems(Startup, |mut windows: Query<&mut Window, With<bevy::window::PrimaryWindow>>| {
             if let Ok(mut window) = windows.single_mut() { window.set_maximized(true); }
         })

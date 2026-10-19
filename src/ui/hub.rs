@@ -219,6 +219,7 @@ pub fn spawn_project_hub(mut commands: Commands, registry: Res<ProjectRegistry>)
         .spawn((
             EditorInternal,
             ProjectHubRoot,
+            bevy::ui_widgets::ScrollArea,
             Node {
                 position_type: PositionType::Absolute,
                 left: px(0),
@@ -230,7 +231,7 @@ pub fn spawn_project_hub(mut commands: Commands, registry: Res<ProjectRegistry>)
                 justify_content: JustifyContent::FlexStart,
                 padding: UiRect::axes(px(48), px(28)),
                 row_gap: px(20),
-                overflow: Overflow::clip_y(),
+                overflow: Overflow::scroll_y(),
                 ..default()
             },
             BackgroundColor(BG_SHELL),
@@ -592,6 +593,9 @@ pub fn spawn_project_hub(mut commands: Commands, registry: Res<ProjectRegistry>)
         ChildOf(hub_root),
     ));
 
+    // Sample games (bundled playable projects)
+    super::hub_samples::spawn_samples_section(&mut commands, hub_root);
+
     // ==========================================
     // SECTION 2: "Start from a Template"
     // ==========================================
@@ -728,6 +732,13 @@ fn spawn_user_project_card(commands: &mut Commands, parent: Entity, item: &UserP
                         // Clear any existing entities so they don't stack up
                         for ent in &existing_scene_entities {
                             commands.entity(ent).despawn();
+                        }
+
+                        // Bundled sample games load their own level.
+                        if let Some(sample) = crate::project::sample_levels::SampleGame::find_by_label(&project_template) {
+                            commands.queue(move |world: &mut World| crate::ui::hub_samples::load_sample_level(world, sample));
+                            state.set(EditorAppState::InEditor);
+                            return;
                         }
 
                         // Spawn complete 3D scene with live meshes, materials, and controllers

@@ -1,0 +1,6 @@
+{
+  "name": "Coin Courtyard",
+  "template": "sample_third_person",
+  "description": "Third-person collect-a-thon: grab 12 spinning coins in a walled courtyard within 90 seconds",
+  "scene_source": "src/level.rs"
+}

@@ -109,7 +109,7 @@ pub struct LightmapSettingsMenuState(pub bool);
 pub struct LightmapSettingsPanel;
 
 /// Spawns the top unified header and menu bar.
-pub fn spawn_menu_bar(mut commands: Commands, current_ws: Res<ActiveWorkspace>) {
+pub fn spawn_menu_bar(mut commands: Commands, current_ws: Res<ActiveWorkspace>, windows: Res<crate::ui::windows::EditorWindowRegistry>) {
     let bar_root = commands
         .spawn((
             EditorInternal,
@@ -275,6 +275,10 @@ pub fn spawn_menu_bar(mut commands: Commands, current_ws: Res<ActiveWorkspace>) 
     spawn_dropdown_item(&mut commands, file_menu_popup, "⭐ Set as Default Scene", MenuAction::SetAsDefaultScene);
     spawn_dropdown_separator(&mut commands, file_menu_popup);
     spawn_dropdown_item(&mut commands, file_menu_popup, "🧩 Plugins & Crates...", MenuAction::OpenPluginManager);
+    if !windows.entries.is_empty() {
+        spawn_dropdown_separator(&mut commands, file_menu_popup);
+        crate::ui::windows::spawn_window_menu_items(&mut commands, file_menu_popup, &windows);
+    }
 
     // Quick Action: Save Scene Shortcut Button
     let quick_save_btn = commands
@@ -790,10 +794,10 @@ pub fn sync_lightmap_backend_label(
     if let Some(config) = config {
         if config.is_changed() {
             for mut text in query.iter_mut() {
-                text.0 = match config.backend {
+                crate::ui::set_text(&mut text, match config.backend {
                     bevylite_lightmapper::LightmapBackend::Gpu => "⚡ GPU (RTX)".to_string(),
                     bevylite_lightmapper::LightmapBackend::Cpu => "🖥️ CPU".to_string(),
-                };
+                });
             }
         }
     }
@@ -956,14 +960,14 @@ pub fn update_dropdown_menus_visibility(
     mut lightmap_panels: Query<&mut Node, (With<LightmapSettingsPanel>, Without<FileMenuPanel>, Without<BuildMenuPanel>)>,
 ) {
     for mut node in &mut file_panels {
-        node.display = if file_state.0 { Display::Flex } else { Display::None };
+        crate::ui::set_display(&mut node, if file_state.0 { Display::Flex } else { Display::None });
     }
     for mut node in &mut build_panels {
-        node.display = if build_state.0 { Display::Flex } else { Display::None };
+        crate::ui::set_display(&mut node, if build_state.0 { Display::Flex } else { Display::None });
     }
     if let Some(lightmap_state) = lightmap_state {
         for mut node in &mut lightmap_panels {
-            node.display = if lightmap_state.0 { Display::Flex } else { Display::None };
+            crate::ui::set_display(&mut node, if lightmap_state.0 { Display::Flex } else { Display::None });
         }
     }
 }
@@ -973,7 +977,7 @@ pub fn update_build_menu_visibility(
     mut panels: Query<&mut Node, With<BuildMenuPanel>>,
 ) {
     for mut node in &mut panels {
-        node.display = if state.0 { Display::Flex } else { Display::None };
+        crate::ui::set_display(&mut node, if state.0 { Display::Flex } else { Display::None });
     }
 }
 
@@ -1423,7 +1427,7 @@ pub fn update_mcp_bridge_status(
                         let details = val.get("details").and_then(|d| d.as_str()).unwrap_or("");
 
                         if let Ok(mut txt) = label_query.single_mut() {
-                            txt.0 = format!("MCP: {} ({})", action.to_uppercase(), entity);
+                            crate::ui::set_text(&mut txt, format!("MCP: {} ({})", action.to_uppercase(), entity));
                         }
 
                         *export_status = crate::export::ExportStatus::Success {
@@ -1454,7 +1458,7 @@ pub fn handle_switch_workspace(
         active_ws.0 = msg.0;
 
         if let Ok(mut label) = label_query.single_mut() {
-            label.0 = format!("Workspace: {}", active_ws.0.label());
+            crate::ui::set_text(&mut label, format!("Workspace: {}", active_ws.0.label()));
         }
 
         match active_ws.0 {
@@ -1473,7 +1477,7 @@ pub fn handle_switch_workspace(
                 }
                 if let Ok(mut node) = asset_query.single_mut() {
                     node.height = px(250.0);
-                    node.display = Display::Flex;
+                    crate::ui::set_display(&mut node, Display::Flex);
                 }
             }
             WorkspacePreset::LevelDesign => {
@@ -1509,7 +1513,7 @@ pub fn handle_switch_workspace(
                 }
                 if let Ok(mut node) = asset_query.single_mut() {
                     node.height = px(300.0);
-                    node.display = Display::Flex;
+                    crate::ui::set_display(&mut node, Display::Flex);
                 }
             }
             WorkspacePreset::Debugging => {
@@ -1547,7 +1551,7 @@ pub fn handle_switch_workspace(
                 }
                 if let Ok(mut node) = asset_query.single_mut() {
                     node.height = px(380.0);
-                    node.display = Display::Flex;
+                    crate::ui::set_display(&mut node, Display::Flex);
                 }
             }
         }
@@ -1598,7 +1602,7 @@ pub fn update_window_and_menu_title(
     }
 
     for mut text in &mut title_labels {
-        text.0 = title_string.clone();
+        crate::ui::set_text(&mut text, title_string.clone());
     }
 }
 

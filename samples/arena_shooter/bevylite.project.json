@@ -1,0 +1,6 @@
+{
+  "name": "Arena Survivor",
+  "template": "sample_arena_shooter",
+  "description": "Top-down twin-stick arena shooter: hover tank, mouse aim, dash, enemy waves, pickups and HUD",
+  "scene_source": "src/level.rs"
+}

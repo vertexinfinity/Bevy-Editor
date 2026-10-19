@@ -341,14 +341,24 @@ pub fn update_status_bar(
     mut alert_text_query: Query<&mut Text, (Without<StatusText>, Without<ActiveContextChip>, Without<FpsCounterLabel>, Without<BakeProgressBarPercent>)>,
     mut bake_ui: BakeProgressUiParams,
     mut check_timer: Local<f32>,
+    mut fps_timer: Local<f32>,
     mut cached_warning: Local<Option<(String, bool)>>, // (Message, is_critical)
 ) {
     // Smooth FPS calculation
-    if let Ok(mut fps_text) = fps_query.single_mut() {
-        let delta = time.delta_secs();
-        if delta > 0.0001 {
-            let fps = (1.0 / delta).round() as u32;
-            fps_text.0 = format!("{fps} FPS");
+    // Throttled to 4 Hz and written only when the value changes: rewriting UI text every
+    // frame forces text shaping and layout even when nothing visible changed.
+    *fps_timer += time.delta_secs();
+    if *fps_timer >= 0.25 {
+        *fps_timer = 0.0;
+        if let Ok(mut fps_text) = fps_query.single_mut() {
+            let delta = time.delta_secs();
+            if delta > 0.0001 {
+                let fps = (1.0 / delta).round() as u32;
+                let label = format!("{fps} FPS");
+                if fps_text.0 != label {
+                    fps_text.0 = label;
+                }
+            }
         }
     }
 
@@ -389,15 +399,19 @@ pub fn update_status_bar(
     // Update Alert Chip UI
     if let Ok((mut alert_node, mut alert_border, children)) = alert_query.single_mut() {
         if let Some((msg, is_crit)) = cached_warning.as_ref() {
-            alert_node.display = Display::Flex;
-            *alert_border = BorderColor::all(if *is_crit { ACCENT_CRIMSON } else { ACCENT_AMBER });
+            if alert_node.display != Display::Flex {
+                crate::ui::set_display(&mut alert_node, Display::Flex);
+            }
+            alert_border.set_if_neq(BorderColor::all(if *is_crit { ACCENT_CRIMSON } else { ACCENT_AMBER }));
             for child in children.iter() {
                 if let Ok(mut text) = alert_text_query.get_mut(child) {
-                    text.0 = msg.clone();
+                    if text.0 != *msg {
+                        text.0 = msg.clone();
+                    }
                 }
             }
-        } else {
-            alert_node.display = Display::None;
+        } else if alert_node.display != Display::None {
+            crate::ui::set_display(&mut alert_node, Display::None);
         }
     }
 
@@ -405,7 +419,7 @@ pub fn update_status_bar(
     if let Some(progress) = lightmap_progress.as_deref() {
         if let Ok(mut widget_node) = bake_ui.widget.single_mut() {
             if progress.is_baking || progress.completion_timer > 0.0 {
-                widget_node.display = Display::Flex;
+                crate::ui::set_display(&mut widget_node, Display::Flex);
                 let pct = (progress.progress * 100.0).clamp(0.0, 100.0);
 
                 if let Ok((mut fill_node, mut fill_bg)) = bake_ui.fill.single_mut() {
@@ -426,7 +440,7 @@ pub fn update_status_bar(
                 }
                 return;
             } else {
-                widget_node.display = Display::None;
+                crate::ui::set_display(&mut widget_node, Display::None);
             }
         }
     }
@@ -434,13 +448,19 @@ pub fn update_status_bar(
     if let Some(state) = play_state.as_deref() {
         if *state == crate::core::play_mode::PlayState::Playing {
             if let Ok(mut text) = text_query.single_mut() {
-                text.0 = "Playing in Game View · Esc releases game input · F8 stops".to_string();
+                let status = "Playing in Game View · Esc releases game input · F8 stops";
+                if text.0 != status {
+                    text.0 = status.to_string();
+                }
             }
         } else if *state == crate::core::play_mode::PlayState::Paused {
             if let Ok(mut text) = text_query.single_mut() {
-                text.0 = "Paused · Play resumes · Step advances one frame · Stop returns to editing".to_string();
+                let status = "Paused · Play resumes · Step advances one frame · Stop returns to editing";
+                if text.0 != status {
+                    text.0 = status.to_string();
+                }
             }
-        } else if export_status.is_changed() {
+        } else if export_status.is_changed() || play_state.as_ref().is_some_and(|s| s.is_changed()) {
             if let Ok(mut text) = text_query.single_mut() {
                 match export_status.as_ref() {
                     ExportStatus::Idle => {

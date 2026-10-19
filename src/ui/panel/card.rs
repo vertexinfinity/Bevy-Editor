@@ -201,7 +201,7 @@ impl CardBuilder {
                     if click.button == PointerButton::Primary {
                         if let Ok(mut body_node) = body_query.get_mut(body) {
                             let was_open = body_node.display == Display::Flex;
-                            body_node.display = if was_open { Display::None } else { Display::Flex };
+                            crate::ui::set_display(&mut body_node, if was_open { Display::None } else { Display::Flex });
                             if let Ok(mut arrow_text) = arrow_query.get_mut(arrow_entity) {
                                 arrow_text.0 = if was_open { "›".to_string() } else { "⌄".to_string() };
                             }

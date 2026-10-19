@@ -1,0 +1,6 @@
+{
+  "name": "Target Range",
+  "template": "sample_first_person",
+  "description": "First-person shooting gallery: mouse look, WASD movement, hitscan pistol with reloads, pop-up and sliding targets, a 60 second round with score, accuracy and best score.",
+  "scene_source": "src/level.rs"
+}

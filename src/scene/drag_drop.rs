@@ -82,7 +82,7 @@ fn handle_file_drag_and_drop(
                     hovered_dir.0.clone()
                 } else {
                     match ext.as_str() {
-                        "glb" | "gltf" => PathBuf::from("assets/models"),
+                        "glb" | "gltf" | "obj" | "fbx" | "stl" | "ply" | "mtl" => PathBuf::from("assets/models"),
                         "ron" | "bsn" => PathBuf::from("assets/scenes"),
                         "png" | "jpg" | "jpeg" => PathBuf::from("assets/textures"),
                         _ => PathBuf::from("assets"),
@@ -161,21 +161,16 @@ fn handle_file_drag_and_drop(
                             progress: format!("Loaded scene: {file_name}"),
                         };
                     }
-                    "fbx" => {
-                        warn!("FBX format dropped: {:?}", path_buf);
-                        *export_status = ExportStatus::Failed {
-                            target: "Model Loader".to_string(),
-                            error: format!(
-                                "FBX is not natively supported. Please convert '{file_name}' to .glb/.gltf (e.g. via Blender)."
-                            ),
-                        };
-                    }
-                    "obj" | "stl" => {
-                        *export_status = ExportStatus::Failed {
-                            target: "Model Loader".to_string(),
-                            error: format!(
-                                "Format .{ext} requires optional loader plugin. Prefer .glb / .gltf."
-                            ),
+                    ext if crate::import::IMPORT_EXTENSIONS.contains(&ext) => {
+                        // OBJ materials and textures sit next to the model; bring them along.
+                        if ext == "obj" {
+                            let _ = crate::import::ensure_in_assets(path_buf);
+                        }
+                        info!("Importing dropped .{ext} model: {}", relative_path);
+                        crate::import::spawn_imported(&mut commands, &relative_path, Transform::IDENTITY, None);
+                        *export_status = ExportStatus::InProgress {
+                            target: "Model Importer".to_string(),
+                            progress: format!("Imported model: {file_name}"),
                         };
                     }
                     _ => {

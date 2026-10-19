@@ -176,7 +176,7 @@ pub fn update_light_card(
 ) {
     let Some(selected) = selection.0 else {
         for mut node in &mut card_query {
-            node.display = Display::None;
+            crate::ui::set_display(&mut node, Display::None);
         }
         return;
     };
@@ -190,20 +190,20 @@ pub fn update_light_card(
     };
 
     for mut node in &mut card_query {
-        node.display = if is_light { Display::Flex } else { Display::None };
+        crate::ui::set_display(&mut node, if is_light { Display::Flex } else { Display::None });
     }
 
     if is_light {
         for mut text in &mut mode_query {
-            text.0 = mode.label().to_string();
+            crate::ui::set_text(&mut text, mode.label().to_string());
         }
         for mut text in &mut info_query {
             let shadow_str = if shadows_on { "Active" } else { "Disabled" };
-            text.0 = match mode {
+            crate::ui::set_text(&mut text, match mode {
                 LightBakeMode::Realtime => format!("Bake: Skipped | Dynamic: 100% | Shadows: {shadow_str}"),
                 LightBakeMode::Baked => format!("Bake: Static GI | Dynamic: Off on Baked | Shadows: {shadow_str}"),
                 LightBakeMode::Mixed => format!("Bake: Indirect/AO | Dynamic: Specular | Shadows: {shadow_str}"),
-            };
+            });
         }
     }
 }

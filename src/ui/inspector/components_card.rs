@@ -43,7 +43,7 @@ pub(crate) fn spawn_add_tree_branch(commands: &mut Commands, parent: Entity, lab
 
         if let Ok(mut node) = nodes.get_mut(contents) {
             let is_open = node.display == Display::Flex;
-            node.display = if is_open { Display::None } else { Display::Flex };
+            crate::ui::set_display(&mut node, if is_open { Display::None } else { Display::Flex });
             if let Ok(mut text) = texts.get_mut(label_entity) {
                 text.0 = format!("[{}] {label}", if is_open { "+" } else { "-" });
             }
@@ -170,7 +170,7 @@ pub(crate) fn spawn_add_comp_btn(
                 click.propagate(false);
                 writer.write(kind.clone());
                 if let Ok(mut node) = menu_query.get_mut(parent) {
-                    node.display = Display::None;
+                    crate::ui::set_display(&mut node, Display::None);
                 }
             }
         })

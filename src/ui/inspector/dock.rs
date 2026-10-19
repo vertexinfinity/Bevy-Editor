@@ -156,11 +156,11 @@ pub fn spawn_inspector_panel(mut commands: Commands, extensions: Res<super::exte
                 }
             }
             if let Ok(mut label) = dock_label_query.single_mut() {
-                label.0 = match state.dock_zone {
+                crate::ui::set_text(&mut label, match state.dock_zone {
                     PanelDockZone::Right => "Dock Right".to_string(),
                     PanelDockZone::Left => "Dock Left".to_string(),
                     PanelDockZone::Floating => "Floating".to_string(),
-                };
+                });
             }
             info!("Inspector docked to {:?}", state.dock_zone);
         })
@@ -330,11 +330,11 @@ pub fn spawn_inspector_panel(mut commands: Commands, extensions: Res<super::exte
                 }
             }
             if let Ok(mut label) = dock_label_query.single_mut() {
-                label.0 = match state.dock_zone {
+                crate::ui::set_text(&mut label, match state.dock_zone {
                     PanelDockZone::Right => "? Dock Right".to_string(),
                     PanelDockZone::Left => "? Dock Left".to_string(),
                     PanelDockZone::Floating => "? Floating".to_string(),
-                };
+                });
             }
             info!("Inspector docked to {:?}", state.dock_zone);
         })
@@ -399,35 +399,11 @@ pub fn spawn_inspector_panel(mut commands: Commands, extensions: Res<super::exte
         ))
         .id();
 
-    // Spawn Feathers split pane inside debug root
-    let feathers_scene = bsn! {
-        @FeathersSplitPane
-        Node {
-            width: percent(100),
-            height: percent(100),
-        }
-        on(split_pane_self_update)
-        Children [
-            @FeathersPane { @size: 1.0, @min_size: 140.0 }
-            Children [
-                @entity_tree_panel()
-                Node { width: Val::Auto }
-            ]
-            --
-            @FeathersSplitPaneHandle
-            --
-            @FeathersPane { @size: 1.5, @min_size: 180.0 }
-            Children [
-                @details_panel()
-                Node { width: Val::Auto }
-            ]
-        ]
-    };
-    commands.spawn_scene(feathers_scene).insert((
-        EditorInternal,
-        ChildOf(debug_root),
-    ));
+    // The Feathers reflection panels are spawned on demand by `manage_debug_panels`:
+    // built while hidden they cost ~1,000 entities and rebuild on every selection.
+    let _ = debug_root;
 }
+
 
 fn spawn_clean_transform_panel(commands: &mut Commands, parent: Entity) {
     // A. Selected Entity & Coordinate Space Header
@@ -773,7 +749,7 @@ pub fn handle_inspector_toggle_messages(
 
     if state.is_changed() {
         if let Ok(mut handle_node) = resize_handle_query.single_mut() {
-            handle_node.display = if state.is_collapsed { Display::None } else { Display::Flex };
+            crate::ui::set_display(&mut handle_node, if state.is_collapsed { Display::None } else { Display::Flex });
             match state.dock_zone {
                 PanelDockZone::Right => { handle_node.left = px(0); handle_node.right = Val::Auto; }
                 PanelDockZone::Left => { handle_node.left = Val::Auto; handle_node.right = px(0); }
@@ -805,41 +781,41 @@ pub fn handle_inspector_toggle_messages(
 
         // Toggle header title and mode button visibility
         if let Ok(mut title_node) = title_query.single_mut() {
-            title_node.display = if state.is_collapsed { Display::None } else { Display::Flex };
+            crate::ui::set_display(&mut title_node, if state.is_collapsed { Display::None } else { Display::Flex });
         }
         if let Ok(mut mode_btn_node) = mode_btn_query.single_mut() {
-            mode_btn_node.display = if state.is_collapsed { Display::None } else { Display::Flex };
+            crate::ui::set_display(&mut mode_btn_node, if state.is_collapsed { Display::None } else { Display::Flex });
         }
 
         // Update clean view vs debug view visibility
         if let Ok(mut clean_node) = clean_query.single_mut() {
             if state.is_collapsed || state.is_debug_view {
-                clean_node.display = Display::None;
+                crate::ui::set_display(&mut clean_node, Display::None);
             } else {
-                clean_node.display = Display::Flex;
+                crate::ui::set_display(&mut clean_node, Display::Flex);
             }
         }
 
         if let Ok(mut debug_node) = debug_query.single_mut() {
             if state.is_collapsed || !state.is_debug_view {
-                debug_node.display = Display::None;
+                crate::ui::set_display(&mut debug_node, Display::None);
             } else {
-                debug_node.display = Display::Flex;
+                crate::ui::set_display(&mut debug_node, Display::Flex);
             }
         }
 
         // Update mode label
         if let Ok(mut mode_txt) = mode_label_query.single_mut() {
-            mode_txt.0 = if state.is_debug_view {
+            crate::ui::set_text(&mut mode_txt, if state.is_debug_view {
                 "Debug View: ON".to_string()
             } else {
                 "Debug View: OFF".to_string()
-            };
+            });
         }
 
         // Update dock label
         if let Ok(mut dock_txt) = dock_label_query.single_mut() {
-            dock_txt.0 = if state.is_collapsed {
+            crate::ui::set_text(&mut dock_txt, if state.is_collapsed {
                 match state.dock_zone {
                     PanelDockZone::Right => "<".to_string(),
                     PanelDockZone::Left => ">".to_string(),
@@ -851,16 +827,59 @@ pub fn handle_inspector_toggle_messages(
                     PanelDockZone::Left => "Dock Left".to_string(),
                     PanelDockZone::Floating => "Floating".to_string(),
                 }
-            };
+            });
         }
 
         // Update coordinate space label
         if let Ok(mut coord_txt) = coord_label_query.single_mut() {
-            coord_txt.0 = if state.is_global_coords {
+            crate::ui::set_text(&mut coord_txt, if state.is_global_coords {
                 "Space: Global".to_string()
             } else {
                 "Space: Local".to_string()
-            };
+            });
+        }
+    }
+}
+
+/// Spawns the Feathers debug inspector only while Debug View is on, and frees it after.
+pub fn manage_debug_panels(mut commands: Commands, state: Res<InspectorState>, roots: Query<(Entity, Option<&Children>), With<DebugViewRoot>>) {
+    if !state.is_changed() {
+        return;
+    }
+    let Ok((debug_root, children)) = roots.single() else { return };
+    let has_panels = children.is_some_and(|c| !c.is_empty());
+    if state.is_debug_view && !has_panels {
+        // Feathers split pane: entity tree on the left, component details on the right
+        let feathers_scene = bsn! {
+            @FeathersSplitPane
+            Node {
+                width: percent(100),
+                height: percent(100),
+            }
+            on(split_pane_self_update)
+            Children [
+                @FeathersPane { @size: 1.0, @min_size: 140.0 }
+                Children [
+                    @entity_tree_panel()
+                    Node { width: Val::Auto }
+                ]
+                --
+                @FeathersSplitPaneHandle
+                --
+                @FeathersPane { @size: 1.5, @min_size: 180.0 }
+                Children [
+                    @details_panel()
+                    Node { width: Val::Auto }
+                ]
+            ]
+        };
+        commands.spawn_scene(feathers_scene).insert((
+            EditorInternal,
+            ChildOf(debug_root),
+        ));
+    } else if !state.is_debug_view && has_panels {
+        for child in children.into_iter().flatten() {
+            commands.entity(*child).despawn();
         }
     }
 }

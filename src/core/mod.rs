@@ -9,12 +9,14 @@
 
 pub mod commands;
 pub mod panels;
+pub mod perf;
 pub mod play_mode;
 pub mod play_input;
 pub mod reflect_fields;
 mod standalone;
 pub mod selection;
 pub mod tools;
+pub mod undo_tracker;
 
 use bevy::prelude::*;
 
@@ -28,6 +30,8 @@ impl Plugin for CoreEditorPlugin {
             panels::PanelPlugin,
             selection::SelectionPlugin,
             play_mode::PlayModePlugin,
+            perf::PerfPlugin,
+            undo_tracker::UndoTrackerPlugin,
         ));
     }
 }

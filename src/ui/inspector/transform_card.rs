@@ -192,14 +192,14 @@ fn spawn_transform_axis_widget(
         .observe(move |_over: On<PointerOver>, mut nodes: Query<&mut Node>| {
             for arrow in [left_arrow, right_arrow] {
                 if let Ok(mut node) = nodes.get_mut(arrow) {
-                    node.display = Display::Flex;
+                    crate::ui::set_display(&mut node, Display::Flex);
                 }
             }
         })
         .observe(move |_out: On<PointerOut>, mut nodes: Query<&mut Node>| {
             for arrow in [left_arrow, right_arrow] {
                 if let Ok(mut node) = nodes.get_mut(arrow) {
-                    node.display = Display::None;
+                    crate::ui::set_display(&mut node, Display::None);
                 }
             }
         })
@@ -402,7 +402,7 @@ fn set_transform_axis_values(
 ) {
     for (axis_value, mut text) in axis_labels.iter_mut() {
         if text_edit.active == Some((axis_value.property, axis_value.axis)) {
-            text.0 = format!("{}_", text_edit.buffer);
+            crate::ui::set_text(&mut text, format!("{}_", text_edit.buffer));
             continue;
         }
 
@@ -416,11 +416,11 @@ fn set_transform_axis_values(
             TransformAxis::Y => vector.y,
             TransformAxis::Z => vector.z,
         };
-        text.0 = if axis_value.property == TransformProperty::Rotation {
+        crate::ui::set_text(&mut text, if axis_value.property == TransformProperty::Rotation {
             format!("{value:.1}°")
         } else {
             format!("{value:.2}")
-        };
+        });
     }
 }
 
@@ -458,25 +458,25 @@ pub fn update_clean_transform_labels(
 
     let Some(selected) = selection.0 else {
         if selection.is_changed() {
-            name_txt.0 = "Select an entity".to_string();
+            crate::ui::set_text(&mut name_txt, "Select an entity".to_string());
             set_transform_axis_values(&mut axis_labels, Vec3::ZERO, Vec3::ZERO, Vec3::ONE, &text_edit);
-            badges_txt.0 = "None".to_string();
+            crate::ui::set_text(&mut badges_txt, "None".to_string());
             script_txt.0.clear();
-            if let Ok(mut card) = script_card_query.single_mut() { card.display = Display::None; }
+            if let Ok(mut card) = script_card_query.single_mut() { crate::ui::set_display(&mut card, Display::None); }
             if let Ok(mut mat_card) = mat_card_query.single_mut() {
-                mat_card.display = Display::None;
+                crate::ui::set_display(&mut mat_card, Display::None);
             }
         }
         return;
     };
 
     let Ok((name, transform, global_transform, script, spin, vel, tag, mesh, dir_light, pt_light, vis, mat_handle)) = entities.get(selected) else {
-        name_txt.0 = format!("Selected: {:?} (Despawned)", selected);
+        crate::ui::set_text(&mut name_txt, format!("Selected: {:?} (Despawned)", selected));
         set_transform_axis_values(&mut axis_labels, Vec3::ZERO, Vec3::ZERO, Vec3::ONE, &text_edit);
         script_txt.0.clear();
-        if let Ok(mut card) = script_card_query.single_mut() { card.display = Display::None; }
+        if let Ok(mut card) = script_card_query.single_mut() { crate::ui::set_display(&mut card, Display::None); }
         if let Ok(mut mat_card) = mat_card_query.single_mut() {
-            mat_card.display = Display::None;
+            crate::ui::set_display(&mut mat_card, Display::None);
         }
         return;
     };
@@ -518,11 +518,11 @@ pub fn update_clean_transform_labels(
         format!("{type_desc} #{}", selected.index())
     };
 
-    name_txt.0 = if is_hidden {
+    crate::ui::set_text(&mut name_txt, if is_hidden {
         format!("{base_name} · Hidden")
     } else {
         base_name
-    };
+    });
 
     // Compute display position, rotation, scale
     let (pos, rot, scale) = if state.is_global_coords {
@@ -554,40 +554,40 @@ pub fn update_clean_transform_labels(
     if vel.is_some() { badges.push("Velocity"); }
     if tag.is_some() { badges.push("GameplayTag"); }
 
-    badges_txt.0 = if badges.is_empty() {
+    crate::ui::set_text(&mut badges_txt, if badges.is_empty() {
         "None".to_string()
     } else {
         badges.join(" · ")
-    };
+    });
 
     if let Ok(mut card_node) = script_card_query.single_mut() {
-        card_node.display = if script.is_some() { Display::Flex } else { Display::None };
+        crate::ui::set_display(&mut card_node, if script.is_some() { Display::Flex } else { Display::None });
     }
 
     if let Some(script_comp) = script {
-        script_txt.0 = script_comp.script_file.clone();
+        crate::ui::set_text(&mut script_txt, script_comp.script_file.clone());
     } else {
-        script_txt.0 = String::new();
+        crate::ui::set_text(&mut script_txt, String::new());
     }
 
     // Material Card update
     if let Ok(mut mat_card) = mat_card_query.single_mut() {
         if let Some(handle) = mat_handle {
-            mat_card.display = Display::Flex;
+            crate::ui::set_display(&mut mat_card, Display::Flex);
             if let Some(mat) = materials.get(&handle.0) {
                 if let Ok(mut swatch_bg) = mat_swatch.single_mut() {
-                    *swatch_bg = BackgroundColor(mat.base_color);
+                    swatch_bg.set_if_neq(BackgroundColor(mat.base_color));
                 }
                 if let Ok(mut info_text) = mat_info_label.single_mut() {
                     let glow_str = if mat.emissive.to_f32_array()[0] > 0.1 { "On" } else { "Off" };
-                    info_text.0 = format!(
+                    crate::ui::set_text(&mut info_text, format!(
                         "Roughness: {:.2} | Metallic: {:.2} | Glow: {} | Unlit: {}",
                         mat.perceptual_roughness, mat.metallic, glow_str, mat.unlit
-                    );
+                    ));
                 }
             }
         } else {
-            mat_card.display = Display::None;
+            crate::ui::set_display(&mut mat_card, Display::None);
         }
     }
 }

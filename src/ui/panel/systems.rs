@@ -35,7 +35,7 @@ pub fn handle_panel_collapse_messages(
                 // Show / hide body content
                 for (body, mut body_node) in &mut body_query {
                     if body.0 == target_id {
-                        body_node.display = if meta.is_collapsed { Display::None } else { Display::Flex };
+                        crate::ui::set_display(&mut body_node, if meta.is_collapsed { Display::None } else { Display::Flex });
                     }
                 }
             }
@@ -53,7 +53,7 @@ pub fn handle_panel_visibility_messages(
         for (root, mut meta, mut root_node) in &mut panel_query {
             if root.0 == target_id {
                 meta.is_open = !meta.is_open;
-                root_node.display = if meta.is_open { Display::Flex } else { Display::None };
+                crate::ui::set_display(&mut root_node, if meta.is_open { Display::Flex } else { Display::None });
             }
         }
     }

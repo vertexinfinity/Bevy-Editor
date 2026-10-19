@@ -60,6 +60,7 @@ impl Plugin for InspectorFeaturesPlugin {
                 sync_global_wireframe,
                 camera_card::strip_blocked_runtime_features,
                 camera_card::sync_overlay_cameras,
+                dock::manage_debug_panels,
             )
                 .run_if(in_state(crate::ui::EditorAppState::InEditor)),
         );

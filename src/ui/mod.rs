@@ -3,6 +3,7 @@
 pub mod asset_browser;
 pub mod hierarchy;
 pub mod hub;
+pub mod hub_samples;
 pub mod inspector;
 pub mod panel;
 pub mod menu;
@@ -12,6 +13,7 @@ pub mod status_bar;
 pub mod theme;
 pub mod tools_bar;
 pub mod layout;
+pub mod windows;
 
 pub use hub::EditorAppState;
 
@@ -81,6 +83,7 @@ impl Plugin for EditorUiPlugin {
             app.add_plugins(InspectorPlugin);
         }
 
+        app.init_resource::<windows::EditorWindowRegistry>();
         app.add_plugins(inspector::InspectorFeaturesPlugin);
 
         app.insert_resource(UiTheme(create_dark_theme()))
@@ -208,5 +211,22 @@ impl Plugin for EditorUiPlugin {
                 )
                     .run_if(in_state(EditorAppState::InEditor)),
             );
+    }
+}
+
+
+/// Sets `Node::display` only when it differs, so unchanged UI is not marked dirty
+/// (a write would force Bevy to recompute layout every frame).
+pub fn set_display<N: std::ops::DerefMut<Target = Node>>(node: &mut N, display: Display) {
+    if node.display != display {
+        node.display = display;
+    }
+}
+
+/// Sets UI text only when it differs (see [`set_display`]).
+pub fn set_text<T: std::ops::DerefMut<Target = Text>>(text: &mut T, value: impl Into<String>) {
+    let value = value.into();
+    if text.0 != value {
+        text.0 = value;
     }
 }

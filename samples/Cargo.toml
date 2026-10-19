@@ -1,0 +1,31 @@
+# Bevylite sample games. One workspace so Bevy compiles once for every sample.
+#
+#   cargo run -p third_person      # Coin Courtyard
+#   cargo run -p first_person      # Target Range
+#   cargo run -p endless_runner    # Neon Runner
+#   cargo run -p arena_shooter     # Arena Survivor
+#
+# editor_showcase keeps its own standalone workspace.
+[workspace]
+resolver = "3"
+members = ["sample_kit", "third_person", "first_person", "endless_runner", "arena_shooter"]
+exclude = ["editor_showcase"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+# Same Bevy revision as the editor (see the editor's Cargo.lock).
+bevy = { git = "https://github.com/bevyengine/bevy", rev = "85503941e488152711a4695bbe248e9ed9f453fc", default-features = false, features = ["3d", "ui", "default_font", "tonemapping_luts"] }
+sample_kit = { path = "sample_kit" }
+
+[profile.dev]
+opt-level = 1
+debug = 0
+
+[profile.dev.package."*"]
+opt-level = 3
+debug = 0

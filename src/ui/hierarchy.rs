@@ -583,7 +583,7 @@ fn spawn_hierarchy_menu_item(
             if click.button == PointerButton::Primary {
                 writer.write(SpawnPrimitiveMessage(kind, None));
                 if let Ok(mut node) = menu_query.get_mut(parent) {
-                    node.display = Display::None;
+                    crate::ui::set_display(&mut node, Display::None);
                 }
             }
         })
@@ -678,7 +678,7 @@ pub(super) fn update_hierarchy_list(
         let count = entities_query.iter().count();
         *cached_entity_count = Some(count);
         if let Ok(mut count_text) = count_label_query.single_mut() {
-            count_text.0 = count.to_string();
+            crate::ui::set_text(&mut count_text, count.to_string());
         }
     }
     if *first
@@ -1108,7 +1108,7 @@ pub(crate) fn update_hierarchy_row_actions(
     for (action, mut node) in &mut actions {
         let show = action.persistent || rows.get(action.row).is_ok_and(|(row, hover)| hover.get() || selection.0 == Some(row.0));
         let display = if show { Display::Flex } else { Display::None };
-        if node.display != display { node.display = display; }
+        if node.display != display { crate::ui::set_display(&mut node, display); }
     }
 }
 
@@ -1457,8 +1457,9 @@ pub fn handle_spawn_primitives(
             }
             SpawnPrimitiveKind::Delete => {
                 if let Some(e) = target.or(world.resource::<InspectorSelection>().0) {
-                    if let Ok(ent) = world.get_entity_mut(e) {
-                        ent.despawn();
+                    // Undoable: Ctrl+Z restores the entity and its children.
+                    if let Err(error) = crate::core::undo_tracker::delete_with_undo(world, e) {
+                        warn!("{error}");
                     }
                     if world.resource::<InspectorSelection>().0 == Some(e) {
                         world.resource_mut::<InspectorSelection>().0 = None;
@@ -1502,19 +1503,19 @@ pub fn handle_hierarchy_collapse(
         }
 
         if let Ok(mut title_node) = title_query.single_mut() {
-            title_node.display = if state.is_collapsed { Display::None } else { Display::Flex };
+            crate::ui::set_display(&mut title_node, if state.is_collapsed { Display::None } else { Display::Flex });
         }
 
         if let Ok(mut actions_node) = actions_query.single_mut() {
-            actions_node.display = if state.is_collapsed { Display::None } else { Display::Flex };
+            crate::ui::set_display(&mut actions_node, if state.is_collapsed { Display::None } else { Display::Flex });
         }
 
         if let Ok(mut list_node) = list_query.single_mut() {
-            list_node.display = if state.is_collapsed { Display::None } else { Display::Flex };
+            crate::ui::set_display(&mut list_node, if state.is_collapsed { Display::None } else { Display::Flex });
         }
 
         if let Ok(mut label) = label_query.single_mut() {
-            label.0 = if state.is_collapsed { ">" } else { "<" }.to_string();
+            crate::ui::set_text(&mut label, if state.is_collapsed { ">" } else { "<" }.to_string());
         }
     }
 }
@@ -1574,9 +1575,9 @@ pub fn handle_hierarchy_search_input(
     if changed {
         if let Ok(mut search_text) = search_query.single_mut() {
             if state.filter.is_empty() {
-                search_text.0 = "Search Hierarchy...".to_string();
+                crate::ui::set_text(&mut search_text, "Search Hierarchy...".to_string());
             } else {
-                search_text.0 = state.filter.clone();
+                crate::ui::set_text(&mut search_text, state.filter.clone());
             }
         }
     }

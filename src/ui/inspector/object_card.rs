@@ -72,7 +72,7 @@ pub fn update_object_card(world: &mut World) {
     if let Some(mut node) = world.get_mut::<Node>(card) {
         let display = if selected.is_some() { Display::Flex } else { Display::None };
         if node.display != display {
-            node.display = display;
+            crate::ui::set_display(&mut node, display);
         }
     }
     let Some(entity) = selected else { return };

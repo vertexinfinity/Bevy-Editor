@@ -103,8 +103,8 @@ impl AssetCategoryFilter {
         let lower = file_name.to_lowercase();
         match self {
             Self::All => true,
-            Self::Models => lower.ends_with(".glb") || lower.ends_with(".gltf") || lower.ends_with(".obj"),
-            Self::Textures => lower.ends_with(".png") || lower.ends_with(".jpg") || lower.ends_with(".ktx2"),
+            Self::Models => [".glb", ".gltf", ".obj", ".fbx", ".stl", ".ply"].iter().any(|e| lower.ends_with(e)),
+            Self::Textures => [".png", ".jpg", ".jpeg", ".ktx2", ".webp", ".hdr"].iter().any(|e| lower.ends_with(e)),
             Self::Scenes => lower.ends_with(".ron") || lower.ends_with(".bsn"),
             Self::Scripts => lower.ends_with(".lua") || lower.ends_with(".rhai") || lower.ends_with(".rs"),
             Self::Audio => lower.ends_with(".ogg") || lower.ends_with(".wav") || lower.ends_with(".mp3"),
@@ -130,12 +130,24 @@ pub struct CreateAssetAction {
 #[derive(Message, Clone, Copy, Debug)]
 pub struct SetAssetFilterMessage(pub AssetCategoryFilter);
 
+/// How the Project Explorer lays out files: icon grid (default) or compact list.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AssetViewMode {
+    #[default]
+    Grid,
+    List,
+}
+
+#[derive(Component)]
+pub struct AssetViewToggleLabel;
+
 /// State for the Project Explorer dock.
 #[derive(Resource, Debug, Clone)]
 pub struct AssetBrowserState {
     pub is_collapsed: bool,
     pub current_dir: PathBuf,
     pub active_filter: AssetCategoryFilter,
+    pub view: AssetViewMode,
     pub width: f32,
     pub height: f32,
 }
@@ -146,13 +158,14 @@ impl Default for AssetBrowserState {
             is_collapsed: false,
             current_dir: PathBuf::from("assets"),
             active_filter: AssetCategoryFilter::All,
+            view: AssetViewMode::Grid,
             width: 1200.0,
             height: 210.0,
         }
     }
 }
 
-pub fn spawn_asset_browser(mut commands: Commands, state: Res<AssetBrowserState>) {
+pub fn spawn_asset_browser(mut commands: Commands, state: Res<AssetBrowserState>, asset_server: Res<AssetServer>) {
     let browser_root = commands
         .spawn((
             EditorInternal,
@@ -546,6 +559,21 @@ pub fn spawn_asset_browser(mut commands: Commands, state: Res<AssetBrowserState>
         ));
     }
 
+    // Grid / List view toggle
+    let view_btn = commands
+        .spawn((EditorInternal, Node { padding: UiRect::axes(px(6), px(2)), border_radius: BorderRadius::all(px(3)), ..default() }, BackgroundColor(BG_INPUT), ChildOf(header_right)))
+        .observe(|t: On<PointerOver>, mut bg: Query<&mut BackgroundColor>| { if let Ok(mut bg) = bg.get_mut(t.entity) { *bg = BackgroundColor(BG_HOVER); } })
+        .observe(|t: On<PointerOut>, mut bg: Query<&mut BackgroundColor>| { if let Ok(mut bg) = bg.get_mut(t.entity) { *bg = BackgroundColor(BG_INPUT); } })
+        .observe(|click: On<PointerClick>, mut state: ResMut<AssetBrowserState>, mut refresh: MessageWriter<RefreshAssetBrowserMessage>, mut labels: Query<&mut Text, With<AssetViewToggleLabel>>| {
+            if click.button == PointerButton::Primary {
+                state.view = if state.view == AssetViewMode::Grid { AssetViewMode::List } else { AssetViewMode::Grid };
+                for mut label in &mut labels { label.0 = view_toggle_label(state.view).to_string(); }
+                refresh.write(RefreshAssetBrowserMessage);
+            }
+        })
+        .id();
+    commands.spawn((EditorInternal, AssetViewToggleLabel, Pickable::IGNORE, Text::new(view_toggle_label(state.view)), TextFont { font_size: bevy::text::FontSize::Px(10.0), ..default() }, TextColor(TEXT_SECONDARY), ChildOf(view_btn)));
+
     // Collapse / Dock Toggle Button
     let collapse_btn = commands
         .spawn((
@@ -597,9 +625,12 @@ pub fn spawn_asset_browser(mut commands: Commands, state: Res<AssetBrowserState>
             AssetListContainer,
             bevy::ui_widgets::ScrollArea,
             Node {
-                flex_direction: FlexDirection::Column,
+                flex_direction: if state.view == AssetViewMode::Grid { FlexDirection::Row } else { FlexDirection::Column },
+                flex_wrap: if state.view == AssetViewMode::Grid { FlexWrap::Wrap } else { FlexWrap::NoWrap },
+                align_content: AlignContent::FlexStart,
                 padding: UiRect::all(px(6)),
                 row_gap: px(4),
+                column_gap: px(4),
                 overflow: Overflow::scroll_y(),
                 min_height: px(0),
                 flex_grow: 1.0,
@@ -610,7 +641,13 @@ pub fn spawn_asset_browser(mut commands: Commands, state: Res<AssetBrowserState>
         .id();
 
     // Populate initial file list from assets/
-    populate_asset_list(&mut commands, list_container, Path::new("assets"), state.active_filter);
+    populate_asset_list(&mut commands, list_container, Path::new("assets"), state.active_filter, state.view, &asset_server);
+}
+fn view_toggle_label(view: AssetViewMode) -> &'static str {
+    match view {
+        AssetViewMode::Grid => "☰ List",
+        AssetViewMode::List => "▦ Grid",
+    }
 }
 
 fn populate_asset_list(
@@ -618,6 +655,8 @@ fn populate_asset_list(
     parent: Entity,
     current_dir: &Path,
     filter: AssetCategoryFilter,
+    view: AssetViewMode,
+    asset_server: &AssetServer,
 ) {
     let mut entries = Vec::new();
 
@@ -659,11 +698,11 @@ fn populate_asset_list(
     for (path, name, is_dir) in entries {
         let icon = if is_dir {
             "📁"
-        } else if name.ends_with(".glb") || name.ends_with(".gltf") {
+        } else if [".glb", ".gltf", ".obj", ".fbx", ".stl", ".ply"].iter().any(|e| name.to_lowercase().ends_with(e)) {
             "🧊"
         } else if name.ends_with(".ron") || name.ends_with(".bsn") {
             "🎬"
-        } else if name.ends_with(".png") || name.ends_with(".jpg") {
+        } else if [".png", ".jpg", ".jpeg", ".ktx2", ".webp"].iter().any(|e| name.to_lowercase().ends_with(e)) {
             "🖼"
         } else if name.ends_with(".lua") || name.ends_with(".rhai") || name.ends_with(".rs") {
             "📜"
@@ -674,6 +713,7 @@ fn populate_asset_list(
         };
 
         let label = if is_dir { format!("{icon}  {name}/") } else { format!("{icon}  {name}") };
+        let grid = view == AssetViewMode::Grid;
         let row_path = path.clone();
         let hover_dir_path = if is_dir { path.clone() } else { current_dir.to_path_buf() };
 
@@ -685,14 +725,29 @@ fn populate_asset_list(
                     file_name: name.clone(),
                     is_dir,
                 },
-                Node {
-                    padding: UiRect::axes(px(8), px(3)),
-                    border_radius: radius_button(),
-                    border: UiRect::ZERO,
-                    align_items: AlignItems::Center,
-                    justify_content: JustifyContent::SpaceBetween,
-                    flex_direction: FlexDirection::Row,
-                    ..default()
+                if grid {
+                    Node {
+                        width: px(96),
+                        height: px(96),
+                        padding: UiRect::all(px(4)),
+                        border_radius: radius_button(),
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::FlexStart,
+                        flex_direction: FlexDirection::Column,
+                        row_gap: px(4),
+                        overflow: Overflow::clip(),
+                        ..default()
+                    }
+                } else {
+                    Node {
+                        padding: UiRect::axes(px(8), px(3)),
+                        border_radius: radius_button(),
+                        border: UiRect::ZERO,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::SpaceBetween,
+                        flex_direction: FlexDirection::Row,
+                        ..default()
+                    }
                 },
                 BackgroundColor(Color::NONE),
                 BorderColor::all(BORDER_SUBTLE),
@@ -737,22 +792,57 @@ fn populate_asset_list(
             })
             .id();
 
-        commands.spawn((
-            EditorInternal,
-            Pickable::IGNORE,
-            Text::new(label),
-            TextFont {
-                font_size: bevy::text::FontSize::Px(11.0),
-                ..default()
-            },
-            TextColor(TEXT_PRIMARY),
-            ChildOf(row),
-        ));
+        if grid {
+            // Tile: thumbnail for images, large icon otherwise, then the (clipped) name.
+            let lower = name.to_lowercase();
+            let is_image = !is_dir && [".png", ".jpg", ".jpeg"].iter().any(|e| lower.ends_with(e));
+            if is_image {
+                let relative = path.strip_prefix("assets").unwrap_or(&path).to_string_lossy().replace('\\', "/");
+                commands.spawn((
+                    EditorInternal,
+                    Pickable::IGNORE,
+                    ImageNode::new(asset_server.load(relative)),
+                    Node { width: px(56), height: px(56), ..default() },
+                    ChildOf(row),
+                ));
+            } else {
+                commands.spawn((
+                    EditorInternal,
+                    Pickable::IGNORE,
+                    Text::new(icon),
+                    TextFont { font_size: bevy::text::FontSize::Px(36.0), ..default() },
+                    Node { height: px(56), ..default() },
+                    ChildOf(row),
+                ));
+            }
+            commands.spawn((
+                EditorInternal,
+                Pickable::IGNORE,
+                Text::new(if is_dir { format!("{name}/") } else { name.clone() }),
+                TextLayout::justify(Justify::Center),
+                TextFont { font_size: bevy::text::FontSize::Px(10.0), ..default() },
+                TextColor(TEXT_PRIMARY),
+                Node { max_width: px(88), ..default() },
+                ChildOf(row),
+            ));
+        } else {
+            commands.spawn((
+                EditorInternal,
+                Pickable::IGNORE,
+                Text::new(label),
+                TextFont {
+                    font_size: bevy::text::FontSize::Px(11.0),
+                    ..default()
+                },
+                TextColor(TEXT_PRIMARY),
+                ChildOf(row),
+            ));
+        }
 
         let is_scene = !is_dir && (name.ends_with(".ron") || name.ends_with(".bsn"));
         let is_default = is_scene && (name == "default_scene.bsn" || path.ends_with("default_scene.bsn"));
 
-        if is_scene {
+        if is_scene && !(grid && !is_default) {
             if is_default {
                 commands.spawn((
                     EditorInternal,
@@ -844,6 +934,7 @@ pub(super) fn handle_explorer_dock_and_refresh(
     mut breadcrumb_query: Query<&mut Text, (With<DirectoryBreadcrumbLabel>, Without<ExplorerCollapseLabel>)>,
     list_container_query: Query<Entity, With<AssetListContainer>>,
     children_query: Query<&Children>,
+    asset_server: Res<AssetServer>,
     mut commands: Commands,
 ) {
     let mut should_refresh = false;
@@ -873,14 +964,14 @@ pub(super) fn handle_explorer_dock_and_refresh(
         }
 
         if let Ok(mut resize_node) = resize_handle_query.single_mut() {
-            resize_node.display = if state.is_collapsed { Display::None } else { Display::Flex };
+            crate::ui::set_display(&mut resize_node, if state.is_collapsed { Display::None } else { Display::Flex });
         }
 
         if let Ok(mut list_node) = list_query.single_mut() {
             if state.is_collapsed {
-                list_node.display = Display::None;
+                crate::ui::set_display(&mut list_node, Display::None);
             } else {
-                list_node.display = Display::Flex;
+                crate::ui::set_display(&mut list_node, Display::Flex);
             }
         }
 
@@ -902,7 +993,12 @@ pub(super) fn handle_explorer_dock_and_refresh(
                     commands.entity(child).despawn();
                 }
             }
-            populate_asset_list(&mut commands, list_entity, &state.current_dir, state.active_filter);
+            if let Ok(mut list_node) = list_query.single_mut() {
+                let grid = state.view == AssetViewMode::Grid;
+                list_node.flex_direction = if grid { FlexDirection::Row } else { FlexDirection::Column };
+                list_node.flex_wrap = if grid { FlexWrap::Wrap } else { FlexWrap::NoWrap };
+            }
+            populate_asset_list(&mut commands, list_entity, &state.current_dir, state.active_filter, state.view, &asset_server);
         }
     }
 }
@@ -973,6 +1069,14 @@ pub fn handle_spawn_asset_messages(
                 *export_status = ExportStatus::InProgress {
                     target: "Explorer".to_string(),
                     progress: format!("Spawned model: {}", item.file_name),
+                };
+            }
+            ext if crate::import::IMPORT_EXTENSIONS.contains(&ext) => {
+                info!("Importing model from Explorer: {}", clean_path);
+                crate::import::spawn_imported(&mut commands, &clean_path, Transform::IDENTITY, None);
+                *export_status = ExportStatus::InProgress {
+                    target: "Explorer".to_string(),
+                    progress: format!("Imported model: {}", item.file_name),
                 };
             }
             "ron" | "bsn" => {

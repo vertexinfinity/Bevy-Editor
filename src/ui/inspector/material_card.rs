@@ -185,7 +185,7 @@ pub(crate) fn update_material_sharing(
         .unwrap_or_default();
     for mut text in &mut labels {
         if text.0 != label {
-            text.0 = label.clone();
+            crate::ui::set_text(&mut text, label.clone());
         }
     }
 }
